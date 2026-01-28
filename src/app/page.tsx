@@ -144,9 +144,14 @@ export default function Home() {
           {showRules && (
             <div className="border-t border-slate-200 p-4 dark:border-slate-700">
               <div className="mb-4 flex items-center justify-between">
-                <p className="text-sm text-slate-600 dark:text-slate-400">
-                  配置字段关键词到数据类型的映射规则（按优先级从上到下匹配）
-                </p>
+                <div>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    配置字段关键词到数据类型的映射规则（按优先级从上到下匹配）
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    数据类型支持 Spark SQL 的所有类型，可自定义输入任意类型
+                  </p>
+                </div>
                 <div className="flex gap-2">
                   <Button onClick={handleAddRule} size="sm" variant="default">
                     添加规则
@@ -227,19 +232,39 @@ export default function Home() {
                       />
                     </div>
                     <div className="mb-4">
-                      <label className="mb-2 block text-sm font-medium">数据类型</label>
-                      <select
-                        value={editingRule.dataType}
-                        onChange={(e) =>
-                          setEditingRule({ ...editingRule, dataType: e.target.value })
-                        }
-                        className="w-full rounded border border-slate-300 p-2 text-sm dark:border-slate-600 dark:bg-slate-900"
-                      >
-                        <option value="STRING">STRING</option>
-                        <option value="DECIMAL(24, 6)">DECIMAL(24, 6)</option>
-                        <option value="DATE">DATE</option>
-                        <option value="TIMESTAMP">TIMESTAMP</option>
-                      </select>
+                      <label className="mb-2 block text-sm font-medium">
+                        数据类型
+                      </label>
+                      <div className="mb-2">
+                        <input
+                          type="text"
+                          value={editingRule.dataType}
+                          onChange={(e) =>
+                            setEditingRule({ ...editingRule, dataType: e.target.value })
+                          }
+                          className="w-full rounded border border-slate-300 p-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+                          placeholder="例如: STRING, DECIMAL(18,2), INT, ARRAY<STRING>"
+                        />
+                      </div>
+                      <p className="mb-2 text-xs text-slate-500 dark:text-slate-400">
+                        常用类型（点击可快速选择）：
+                      </p>
+                      <div className="flex flex-wrap gap-1">
+                        {[
+                          'STRING', 'INT', 'BIGINT', 'FLOAT', 'DOUBLE',
+                          'DECIMAL(18,2)', 'DECIMAL(24,6)', 'BOOLEAN',
+                          'DATE', 'TIMESTAMP', 'BINARY',
+                          'ARRAY<STRING>', 'ARRAY<INT>', 'MAP<STRING,STRING>'
+                        ].map(type => (
+                          <button
+                            key={type}
+                            onClick={() => setEditingRule({ ...editingRule, dataType: type })}
+                            className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
+                          >
+                            {type}
+                          </button>
+                        ))}
+                      </div>
                     </div>
                     <div className="flex justify-end gap-2">
                       <Button onClick={() => setEditingRule(null)} variant="outline">
@@ -314,7 +339,10 @@ export default function Home() {
         <div className="mt-8 rounded-lg border border-slate-200 bg-white p-4 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
           <p>支持解析 SELECT 查询语句中的字段，自动推断字段类型并生成建表 DDL</p>
           <p className="mt-2">
-            点击上方"类型推断规则配置"可自定义字段类型推断规则
+            点击上方"类型推断规则配置"可自定义字段类型推断规则和数据类型
+          </p>
+          <p className="mt-2 text-xs">
+            Spark SQL 支持的所有数据类型均可使用：STRING, INT, BIGINT, FLOAT, DOUBLE, DECIMAL(p,s), BOOLEAN, DATE, TIMESTAMP, BINARY, ARRAY&lt;type&gt;, MAP&lt;k,v&gt;, STRUCT&lt;field&gt; 等
           </p>
         </div>
       </div>
