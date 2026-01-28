@@ -484,7 +484,7 @@ const databaseTypeLabels: Record<DatabaseType, string> = {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { sql, customRules, databaseTypes = ['spark'] } = body;
+    const { sql, rulesByDatabase, databaseTypes = ['spark'] } = body;
 
     if (!sql || typeof sql !== 'string') {
       return NextResponse.json(
@@ -514,12 +514,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // 为每个数据库类型生成DDL
-    const ddls = validDatabaseTypes.map((dbType: string) => ({
-      databaseType: dbType,
-      label: databaseTypeLabels[dbType as DatabaseType],
-      ddl: generateDDL(fields, customRules, dbType as DatabaseType),
-    }));
+    // 为每个数据库类型生成DDL，使用对应的规则
+    const ddls = validDatabaseTypes.map((dbType: string) => {
+      const customRules = rulesByDatabase?.[dbType] || undefined;
+      return {
+        databaseType: dbType,
+        label: databaseTypeLabels[dbType as DatabaseType],
+        ddl: generateDDL(fields, customRules, dbType as DatabaseType),
+      };
+    });
 
     // 如果只有一个数据库类型，返回单个DDL格式（向后兼容）
     if (ddls.length === 1) {

@@ -30,8 +30,8 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showRules, setShowRules] = useState(false);
-  const [rules, setRules] = useState<TypeRule[]>(defaultRules);
-  const [editingRule, setEditingRule] = useState<TypeRule | null>(null);
+  const [rulesByDatabase, setRulesByDatabase] = useState<Record<string, TypeRule[]>>({ 'spark': defaultRules });
+  const [editingRule, setEditingRule] = useState<{ dbType: string; rule: TypeRule } | null>(null);
   const [selectedDatabaseTypes, setSelectedDatabaseTypes] = useState<string[]>(['spark']);
 
   const databaseTypes = [
@@ -66,7 +66,10 @@ export default function Home() {
         },
         body: JSON.stringify({
           sql: sqlInput,
-          customRules: rules,
+          rulesByDatabase: selectedDatabaseTypes.reduce((acc, dbType) => {
+            acc[dbType] = rulesByDatabase[dbType] || defaultRules;
+            return acc;
+          }, {} as Record<string, TypeRule[]>),
           databaseTypes: selectedDatabaseTypes,
         }),
       });
@@ -79,7 +82,7 @@ export default function Home() {
       // 支持单个或多个DDL
       if (Array.isArray(data.ddls)) {
         // 多个数据库，显示tab分隔
-        setDdlOutput(data.ddls.map((d: any) => `-- ${d.databaseType}\n${d.ddl}`).join('\n\n'));
+        setDdlOutput(data.ddls.map((d: any) => `-- ${d.label}\n${d.ddl}`).join('\n\n'));
       } else {
         setDdlOutput(data.ddl);
       }
@@ -94,46 +97,89 @@ export default function Home() {
     navigator.clipboard.writeText(ddlOutput);
   };
 
-  const handleAddRule = () => {
+  const handleAddRule = (dbType: string) => {
+    const currentRules = rulesByDatabase[dbType] || defaultRules;
     const newRule: TypeRule = {
       id: Date.now().toString(),
       keywords: [],
       dataType: 'STRING',
-      priority: rules.length + 1,
+      priority: currentRules.length + 1,
     };
-    setEditingRule(newRule);
+    setEditingRule({ dbType, rule: newRule });
   };
 
-  const handleEditRule = (rule: TypeRule) => {
-    setEditingRule({ ...rule });
+  const handleEditRule = (dbType: string, rule: TypeRule) => {
+    setEditingRule({ dbType, rule: { ...rule } });
   };
 
-  const handleDeleteRule = (id: string) => {
-    setRules(rules.filter(r => r.id !== id));
+  const handleDeleteRule = (dbType: string, id: string) => {
+    setRulesByDatabase(prev => ({
+      ...prev,
+      [dbType]: (prev[dbType] || []).filter(r => r.id !== id),
+    }));
   };
 
   const handleSaveRule = () => {
     if (!editingRule) return;
 
-    if (editingRule.keywords.length === 0) {
+    const { dbType, rule } = editingRule;
+
+    if (rule.keywords.length === 0) {
       alert('请至少添加一个关键词');
       return;
     }
 
-    const existingIndex = rules.findIndex(r => r.id === editingRule.id);
+    const currentRules = rulesByDatabase[dbType] || defaultRules;
+    const existingIndex = currentRules.findIndex(r => r.id === rule.id);
+
     if (existingIndex >= 0) {
-      const updated = [...rules];
-      updated[existingIndex] = editingRule;
-      setRules(updated);
+      setRulesByDatabase(prev => {
+        const updatedRules = [...(prev[dbType] || [])];
+        updatedRules[existingIndex] = rule;
+        return {
+          ...prev,
+          [dbType]: updatedRules,
+        };
+      });
     } else {
-      setRules([...rules, editingRule]);
+      setRulesByDatabase(prev => ({
+        ...prev,
+        [dbType]: [...(prev[dbType] || []), rule],
+      }));
     }
     setEditingRule(null);
   };
 
   const handleResetRules = () => {
-    if (confirm('确定要重置为默认规则吗？')) {
-      setRules(defaultRules);
+    if (confirm('确定要重置所有数据库的规则为默认值吗？')) {
+      const resetRules: Record<string, TypeRule[]> = {};
+      selectedDatabaseTypes.forEach(dbType => {
+        resetRules[dbType] = defaultRules;
+      });
+      setRulesByDatabase(resetRules);
+    }
+  };
+
+  // 当数据库类型改变时，初始化或清理规则
+  const handleDatabaseTypeChange = (dbType: string, checked: boolean) => {
+    if (checked) {
+      if (selectedDatabaseTypes.length < 2) {
+        const newTypes = [...selectedDatabaseTypes, dbType];
+        setSelectedDatabaseTypes(newTypes);
+        // 为新选择的数据库初始化默认规则
+        setRulesByDatabase(prev => ({
+          ...prev,
+          [dbType]: defaultRules,
+        }));
+      }
+    } else {
+      setSelectedDatabaseTypes(selectedDatabaseTypes.filter(t => t !== dbType));
+      // 删除对应的规则
+      setRulesByDatabase(prev => {
+        const newRules = { ...prev };
+        delete newRules[dbType];
+        return newRules;
+      });
     }
   };
 
@@ -168,15 +214,7 @@ export default function Home() {
                   <input
                     type="checkbox"
                     checked={selectedDatabaseTypes.includes(db.value)}
-                    onChange={(e) => {
-                      if (e.target.checked) {
-                        if (selectedDatabaseTypes.length < 2) {
-                          setSelectedDatabaseTypes([...selectedDatabaseTypes, db.value]);
-                        }
-                      } else {
-                        setSelectedDatabaseTypes(selectedDatabaseTypes.filter(t => t !== db.value));
-                      }
-                    }}
+                    onChange={(e) => handleDatabaseTypeChange(db.value, e.target.checked)}
                     className="rounded border-slate-300 text-blue-600 focus:ring-blue-500 dark:border-slate-600 dark:bg-slate-900"
                   />
                   <span className="text-sm">{db.label}</span>
@@ -198,7 +236,7 @@ export default function Home() {
             className="flex w-full items-center justify-between p-4 text-left"
           >
             <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-              ⚙️ 字段类型映射 ({rules.length} 条)
+              ⚙️ 字段类型映射 ({Object.values(rulesByDatabase).flat().length} 条)
             </h2>
             <span className="text-slate-500 dark:text-slate-400">
               {showRules ? '▼' : '▶'}
@@ -223,66 +261,102 @@ export default function Home() {
                   </p>
                 </div>
                 <div className="flex gap-2">
-                  <Button onClick={handleAddRule} size="sm" variant="default">
-                    添加规则
-                  </Button>
                   <Button onClick={handleResetRules} size="sm" variant="outline">
-                    重置默认
+                    重置所有数据库为默认
                   </Button>
                 </div>
               </div>
 
-              {/* 规则列表 */}
-              <div className="space-y-2">
-                {rules.map((rule, index) => (
-                  <div
-                    key={rule.id}
-                    className="flex items-center gap-4 rounded border border-slate-200 bg-slate-50 p-3 dark:border-slate-600 dark:bg-slate-900"
-                  >
-                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-xs font-medium dark:bg-slate-700">
-                      {index + 1}
-                    </span>
-                    <div className="flex-1">
-                      <div className="flex flex-wrap gap-1">
-                        {rule.keywords.map((kw, i) => (
-                          <span
-                            key={i}
-                            className="rounded bg-blue-100 px-2 py-0.5 text-xs font-mono text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+              {/* 为每个数据库类型显示独立的配置区域 */}
+              {selectedDatabaseTypes.length === 0 ? (
+                <p className="text-center text-sm text-slate-500 dark:text-slate-400">
+                  请先选择数据库类型
+                </p>
+              ) : (
+                <div className="space-y-6">
+                  {selectedDatabaseTypes.map((dbType) => {
+                    const dbLabel = databaseTypes.find(d => d.value === dbType)?.label || dbType.toUpperCase();
+                    const dbRules = rulesByDatabase[dbType] || defaultRules;
+
+                    return (
+                      <div key={dbType} className="rounded-lg border border-slate-200 bg-slate-50 p-4 dark:border-slate-600 dark:bg-slate-900">
+                        <div className="mb-3 flex items-center justify-between">
+                          <h3 className="text-base font-semibold text-slate-800 dark:text-slate-200">
+                            {dbLabel} - 字段类型映射 ({dbRules.length} 条)
+                          </h3>
+                          <Button
+                            onClick={() => handleAddRule(dbType)}
+                            size="sm"
+                            variant="default"
                           >
-                            {kw}
-                          </span>
-                        ))}
+                            添加{dbLabel}规则
+                          </Button>
+                        </div>
+
+                        {/* 规则列表 */}
+                        <div className="space-y-2">
+                          {dbRules.map((rule, index) => (
+                            <div
+                              key={rule.id}
+                              className="flex items-center gap-4 rounded border border-slate-300 bg-white p-3 dark:border-slate-700 dark:bg-slate-800"
+                            >
+                              <span className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full bg-slate-200 text-xs font-medium dark:bg-slate-700">
+                                {index + 1}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <div className="flex flex-wrap gap-1">
+                                  {rule.keywords.map((kw, i) => (
+                                    <span
+                                      key={i}
+                                      className="rounded bg-blue-100 px-2 py-0.5 text-xs font-mono text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                                    >
+                                      {kw}
+                                    </span>
+                                  ))}
+                                </div>
+                              </div>
+                              <span className="flex-shrink-0 rounded bg-green-100 px-2 py-1 text-sm font-mono text-green-800 dark:bg-green-900 dark:text-green-200">
+                                {rule.dataType}
+                              </span>
+                              <div className="flex-shrink-0 flex gap-1">
+                                <Button
+                                  onClick={() => handleEditRule(dbType, rule)}
+                                  size="sm"
+                                  variant="ghost"
+                                >
+                                  编辑
+                                </Button>
+                                <Button
+                                  onClick={() => handleDeleteRule(dbType, rule.id)}
+                                  size="sm"
+                                  variant="ghost"
+                                >
+                                  删除
+                                </Button>
+                              </div>
+                            </div>
+                          ))}
+                          {dbRules.length === 0 && (
+                            <p className="text-center text-sm text-slate-500 dark:text-slate-400 py-4">
+                              暂无规则，点击"添加{dbLabel}规则"按钮添加
+                            </p>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                    <span className="rounded bg-green-100 px-2 py-1 text-sm font-mono text-green-800 dark:bg-green-900 dark:text-green-200">
-                      {rule.dataType}
-                    </span>
-                    <div className="flex gap-1">
-                      <Button
-                        onClick={() => handleEditRule(rule)}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        编辑
-                      </Button>
-                      <Button
-                        onClick={() => handleDeleteRule(rule.id)}
-                        size="sm"
-                        variant="ghost"
-                      >
-                        删除
-                      </Button>
-                    </div>
-                  </div>
-                ))}
-              </div>
+                    );
+                  })}
+                </div>
+              )}
 
               {/* 编辑规则弹窗 */}
               {editingRule && (
                 <div className="fixed inset-0 flex items-center justify-center bg-black/50 p-4">
                   <div className="w-full max-w-lg rounded-lg bg-white p-6 dark:bg-slate-800">
                     <h3 className="mb-4 text-lg font-semibold">
-                      {rules.find(r => r.id === editingRule.id) ? '编辑规则' : '添加规则'}
+                      {rulesByDatabase[editingRule.dbType]?.find(r => r.id === editingRule.rule.id)
+                        ? `编辑${databaseTypes.find(d => d.value === editingRule.dbType)?.label}规则`
+                        : `添加${databaseTypes.find(d => d.value === editingRule.dbType)?.label}规则`
+                      }
                     </h3>
                     <div className="mb-4">
                       <label className="mb-2 block text-sm font-medium">
@@ -290,11 +364,14 @@ export default function Home() {
                       </label>
                       <input
                         type="text"
-                        value={editingRule.keywords.join(',')}
+                        value={editingRule.rule.keywords.join(',')}
                         onChange={(e) =>
                           setEditingRule({
                             ...editingRule,
-                            keywords: e.target.value.split(',').map(k => k.trim()).filter(k => k),
+                            rule: {
+                              ...editingRule.rule,
+                              keywords: e.target.value.split(',').map(k => k.trim()).filter(k => k),
+                            },
                           })
                         }
                         className="w-full rounded border border-slate-300 p-2 text-sm dark:border-slate-600 dark:bg-slate-900"
@@ -308,9 +385,15 @@ export default function Home() {
                       <div className="mb-2">
                         <input
                           type="text"
-                          value={editingRule.dataType}
+                          value={editingRule.rule.dataType}
                           onChange={(e) =>
-                            setEditingRule({ ...editingRule, dataType: e.target.value })
+                            setEditingRule({
+                              ...editingRule,
+                              rule: {
+                                ...editingRule.rule,
+                                dataType: e.target.value,
+                              },
+                            })
                           }
                           className="w-full rounded border border-slate-300 p-2 text-sm dark:border-slate-600 dark:bg-slate-900"
                           placeholder="例如: STRING, DECIMAL(18,2), INT, ARRAY<STRING>"
@@ -328,7 +411,15 @@ export default function Home() {
                         ].map(type => (
                           <button
                             key={type}
-                            onClick={() => setEditingRule({ ...editingRule, dataType: type })}
+                            onClick={() =>
+                              setEditingRule({
+                                ...editingRule,
+                                rule: {
+                                  ...editingRule.rule,
+                                  dataType: type,
+                                },
+                              })
+                            }
                             className="rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100 dark:border-slate-600 dark:hover:bg-slate-700"
                           >
                             {type}
