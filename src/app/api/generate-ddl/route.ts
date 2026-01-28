@@ -9,11 +9,6 @@ interface FieldInfo {
 function parseSQLFields(sql: string): FieldInfo[] {
   const fields: FieldInfo[] = [];
 
-  // 移除行注释（保留换行）
-  const cleanSql = sql
-    .replace(/--.*$/gm, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '');
-
   // 提取 SELECT ... FROM 之间的内容（支持多行和复杂子查询）
   // 使用平衡括号计数来确保找到正确的FROM
   let parenCount = 0;
@@ -21,15 +16,15 @@ function parseSQLFields(sql: string): FieldInfo[] {
   let fromPos = -1;
 
   // 找到SELECT关键字的位置（支持INSERT INTO...SELECT）
-  const selectMatch = cleanSql.match(/\bSELECT\b/i);
+  const selectMatch = sql.match(/\bSELECT\b/i);
   if (!selectMatch || selectMatch.index === undefined) {
     throw new Error('无法解析SQL，请确保输入的是有效的SELECT查询');
   }
   selectStart = selectMatch.index + selectMatch[0].length;
 
   // 从SELECT之后开始查找FROM
-  for (let i = selectStart; i < cleanSql.length; i++) {
-    const char = cleanSql[i];
+  for (let i = selectStart; i < sql.length; i++) {
+    const char = sql[i];
 
     if (char === '(') {
       parenCount++;
@@ -37,12 +32,12 @@ function parseSQLFields(sql: string): FieldInfo[] {
       parenCount--;
     } else if (parenCount === 0) {
       // 检查是否是FROM关键字（确保是独立的单词）
-      if (cleanSql.substr(i, 4).toUpperCase() === 'FROM') {
+      if (sql.substr(i, 4).toUpperCase() === 'FROM') {
         // 检查FROM后面是空白符或结束符
-        const nextChar = cleanSql[i + 4];
+        const nextChar = sql[i + 4];
         if (!nextChar || /\s/.test(nextChar)) {
           // 检查FROM前面是空白符或开始符
-          const prevChar = i === 0 ? '' : cleanSql[i - 1];
+          const prevChar = i === 0 ? '' : sql[i - 1];
           if (i === 0 || /\s/.test(prevChar)) {
             fromPos = i;
             break;
@@ -56,7 +51,27 @@ function parseSQLFields(sql: string): FieldInfo[] {
     throw new Error('无法找到FROM关键字，请检查SQL格式');
   }
 
-  const selectClause = cleanSql.substring(selectStart, fromPos).trim();
+  const selectClause = sql.substring(selectStart, fromPos).trim();
+
+  // 提取注释并建立映射（按行处理）
+  const commentMap = new Map<string, string>();
+  const lines = selectClause.split('\n');
+
+  for (const line of lines) {
+    const commentMatch = line.match(/--\s*(.+)$/);
+    if (commentMatch) {
+      const comment = commentMatch[1].trim();
+      const fieldPart = line.substring(0, commentMatch.index).trim();
+      if (fieldPart) {
+        // 移除开头的逗号和多余的空白符，作为规范化后的key
+        const normalizedKey = fieldPart.replace(/^,+/, '').replace(/\s+/g, ' ');
+        commentMap.set(normalizedKey, comment);
+      }
+    }
+  }
+
+  // 移除注释用于解析字段
+  const cleanSelectClause = selectClause.replace(/--\s*.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '');
 
   // 分割字段（考虑逗号，但忽略括号内的逗号）
   const fieldExpressions: string[] = [];
@@ -65,8 +80,8 @@ function parseSQLFields(sql: string): FieldInfo[] {
   let inQuote = false;
   let quoteChar = '';
 
-  for (let i = 0; i < selectClause.length; i++) {
-    const char = selectClause[i];
+  for (let i = 0; i < cleanSelectClause.length; i++) {
+    const char = cleanSelectClause[i];
 
     if (!inQuote && (char === '"' || char === "'" || char === '`')) {
       inQuote = true;
@@ -95,7 +110,7 @@ function parseSQLFields(sql: string): FieldInfo[] {
 
   // 解析每个字段表达式
   for (const expr of fieldExpressions) {
-    const field = parseFieldExpression(expr);
+    const field = parseFieldExpression(expr, commentMap);
     if (field) {
       fields.push(field);
     }
@@ -104,7 +119,7 @@ function parseSQLFields(sql: string): FieldInfo[] {
   return fields;
 }
 
-function parseFieldExpression(expr: string): FieldInfo | null {
+function parseFieldExpression(expr: string, commentMap: Map<string, string>): FieldInfo | null {
   // 跳过子查询
   if (expr.includes('SELECT ') || expr.includes(' FROM ')) {
     return null;
@@ -149,19 +164,24 @@ function parseFieldExpression(expr: string): FieldInfo | null {
     }
   }
 
-  // 提取注释（如果有）
-  const commentMatch = expr.match(/--\s*(.+)$/);
-  if (commentMatch) {
-    comment = commentMatch[1].trim();
-  }
-
   // 如果有别名，使用别名作为字段名
   const fieldName = alias || name;
+
+  // 规范化字段表达式用于查找注释
+  const normalizedExpr = expr.replace(/\s+/g, ' ');
+
+  // 从commentMap中查找注释
+  comment = commentMap.get(normalizedExpr) || '';
+
+  // 如果没有找到注释，使用字段名作为默认注释
+  if (!comment) {
+    comment = fieldName;
+  }
 
   return {
     name: fieldName,
     alias,
-    comment: comment || name,
+    comment,
   };
 }
 
