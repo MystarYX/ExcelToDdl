@@ -4,11 +4,34 @@ import { useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
 
+interface TypeRule {
+  id: string;
+  keywords: string[];
+  dataType: string;
+  priority: number;
+}
+
+const defaultRules: TypeRule[] = [
+  { id: '1', keywords: ['fcytp', 'scytp', 'cytp', 'currency_type'], dataType: 'STRING', priority: 1 },
+  { id: '2', keywords: ['mode', 'code', 'icode'], dataType: 'STRING', priority: 2 },
+  { id: '3', keywords: ['date'], dataType: 'DATE', priority: 3 },
+  { id: '4', keywords: ['time', 'timestamp'], dataType: 'TIMESTAMP', priority: 4 },
+  { id: '5', keywords: ['org', 'trcl', 'cust', 'stff', 'user', 'dept'], dataType: 'STRING', priority: 5 },
+  { id: '6', keywords: ['name', 'dscr', 'rmrk'], dataType: 'STRING', priority: 6 },
+  { id: '7', keywords: ['flag', 'is_'], dataType: 'STRING', priority: 7 },
+  { id: '8', keywords: ['days', 'day'], dataType: 'DECIMAL(24, 6)', priority: 8 },
+  { id: '9', keywords: ['amt', 'amount', 'price', 'ocy', 'rcy', 'scy', 'elmn', 'crdt', 'totl', 'ocpt'], dataType: 'DECIMAL(24, 6)', priority: 9 },
+  { id: '10', keywords: ['qty', 'quantity', 'cnt', 'count'], dataType: 'DECIMAL(24, 6)', priority: 10 },
+];
+
 export default function Home() {
   const [sqlInput, setSqlInput] = useState('');
   const [ddlOutput, setDdlOutput] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [showRules, setShowRules] = useState(false);
+  const [rules, setRules] = useState<TypeRule[]>(defaultRules);
+  const [editingRule, setEditingRule] = useState<TypeRule | null>(null);
 
   const handleGenerate = async () => {
     if (!sqlInput.trim()) {
@@ -25,7 +48,10 @@ export default function Home() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ sql: sqlInput }),
+        body: JSON.stringify({
+          sql: sqlInput,
+          customRules: rules,
+        }),
       });
 
       if (!response.ok) {
@@ -45,6 +71,49 @@ export default function Home() {
     navigator.clipboard.writeText(ddlOutput);
   };
 
+  const handleAddRule = () => {
+    const newRule: TypeRule = {
+      id: Date.now().toString(),
+      keywords: [],
+      dataType: 'STRING',
+      priority: rules.length + 1,
+    };
+    setEditingRule(newRule);
+  };
+
+  const handleEditRule = (rule: TypeRule) => {
+    setEditingRule({ ...rule });
+  };
+
+  const handleDeleteRule = (id: string) => {
+    setRules(rules.filter(r => r.id !== id));
+  };
+
+  const handleSaveRule = () => {
+    if (!editingRule) return;
+
+    if (editingRule.keywords.length === 0) {
+      alert('请至少添加一个关键词');
+      return;
+    }
+
+    const existingIndex = rules.findIndex(r => r.id === editingRule.id);
+    if (existingIndex >= 0) {
+      const updated = [...rules];
+      updated[existingIndex] = editingRule;
+      setRules(updated);
+    } else {
+      setRules([...rules, editingRule]);
+    }
+    setEditingRule(null);
+  };
+
+  const handleResetRules = () => {
+    if (confirm('确定要重置为默认规则吗？')) {
+      setRules(defaultRules);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100 dark:from-slate-950 dark:to-slate-900 p-6">
       <div className="mx-auto max-w-7xl">
@@ -58,29 +127,131 @@ export default function Home() {
           </p>
         </div>
 
-        {/* 规则说明 */}
-        <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
-          <h2 className="mb-2 text-sm font-semibold text-slate-700 dark:text-slate-300">
-            建表规则
-          </h2>
-          <ul className="grid grid-cols-2 gap-2 text-sm text-slate-600 dark:text-slate-400 md:grid-cols-4">
-            <li className="flex items-center gap-2">
-              <span className="font-mono text-blue-600 dark:text-blue-400">STRING</span>
-              <span>- 字符串类型</span>
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="font-mono text-green-600 dark:text-green-400">DECIMAL(24, 6)</span>
-              <span>- 金额数量</span>
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="font-mono text-purple-600 dark:text-purple-400">DATE</span>
-              <span>- 日期字段</span>
-            </li>
-            <li className="flex items-center gap-2">
-              <span className="font-mono text-orange-600 dark:text-orange-400">TIMESTAMP</span>
-              <span>- 时间字段</span>
-            </li>
-          </ul>
+        {/* 规则配置区 */}
+        <div className="mb-6 rounded-lg border border-slate-200 bg-white dark:border-slate-700 dark:bg-slate-800">
+          <button
+            onClick={() => setShowRules(!showRules)}
+            className="flex w-full items-center justify-between p-4 text-left"
+          >
+            <h2 className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+              ⚙️ 类型推断规则配置 ({rules.length} 条)
+            </h2>
+            <span className="text-slate-500 dark:text-slate-400">
+              {showRules ? '▼' : '▶'}
+            </span>
+          </button>
+
+          {showRules && (
+            <div className="border-t border-slate-200 p-4 dark:border-slate-700">
+              <div className="mb-4 flex items-center justify-between">
+                <p className="text-sm text-slate-600 dark:text-slate-400">
+                  配置字段关键词到数据类型的映射规则（按优先级从上到下匹配）
+                </p>
+                <div className="flex gap-2">
+                  <Button onClick={handleAddRule} size="sm" variant="default">
+                    添加规则
+                  </Button>
+                  <Button onClick={handleResetRules} size="sm" variant="outline">
+                    重置默认
+                  </Button>
+                </div>
+              </div>
+
+              {/* 规则列表 */}
+              <div className="space-y-2">
+                {rules.map((rule, index) => (
+                  <div
+                    key={rule.id}
+                    className="flex items-center gap-4 rounded border border-slate-200 bg-slate-50 p-3 dark:border-slate-600 dark:bg-slate-900"
+                  >
+                    <span className="flex h-6 w-6 items-center justify-center rounded-full bg-slate-200 text-xs font-medium dark:bg-slate-700">
+                      {index + 1}
+                    </span>
+                    <div className="flex-1">
+                      <div className="flex flex-wrap gap-1">
+                        {rule.keywords.map((kw, i) => (
+                          <span
+                            key={i}
+                            className="rounded bg-blue-100 px-2 py-0.5 text-xs font-mono text-blue-800 dark:bg-blue-900 dark:text-blue-200"
+                          >
+                            {kw}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                    <span className="rounded bg-green-100 px-2 py-1 text-sm font-mono text-green-800 dark:bg-green-900 dark:text-green-200">
+                      {rule.dataType}
+                    </span>
+                    <div className="flex gap-1">
+                      <Button
+                        onClick={() => handleEditRule(rule)}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        编辑
+                      </Button>
+                      <Button
+                        onClick={() => handleDeleteRule(rule.id)}
+                        size="sm"
+                        variant="ghost"
+                      >
+                        删除
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              {/* 编辑规则弹窗 */}
+              {editingRule && (
+                <div className="fixed inset-0 flex items-center justify-center bg-black/50 p-4">
+                  <div className="w-full max-w-lg rounded-lg bg-white p-6 dark:bg-slate-800">
+                    <h3 className="mb-4 text-lg font-semibold">
+                      {rules.find(r => r.id === editingRule.id) ? '编辑规则' : '添加规则'}
+                    </h3>
+                    <div className="mb-4">
+                      <label className="mb-2 block text-sm font-medium">
+                        关键词（用逗号分隔）
+                      </label>
+                      <input
+                        type="text"
+                        value={editingRule.keywords.join(',')}
+                        onChange={(e) =>
+                          setEditingRule({
+                            ...editingRule,
+                            keywords: e.target.value.split(',').map(k => k.trim()).filter(k => k),
+                          })
+                        }
+                        className="w-full rounded border border-slate-300 p-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+                        placeholder="例如: amount, price, 金额"
+                      />
+                    </div>
+                    <div className="mb-4">
+                      <label className="mb-2 block text-sm font-medium">数据类型</label>
+                      <select
+                        value={editingRule.dataType}
+                        onChange={(e) =>
+                          setEditingRule({ ...editingRule, dataType: e.target.value })
+                        }
+                        className="w-full rounded border border-slate-300 p-2 text-sm dark:border-slate-600 dark:bg-slate-900"
+                      >
+                        <option value="STRING">STRING</option>
+                        <option value="DECIMAL(24, 6)">DECIMAL(24, 6)</option>
+                        <option value="DATE">DATE</option>
+                        <option value="TIMESTAMP">TIMESTAMP</option>
+                      </select>
+                    </div>
+                    <div className="flex justify-end gap-2">
+                      <Button onClick={() => setEditingRule(null)} variant="outline">
+                        取消
+                      </Button>
+                      <Button onClick={handleSaveRule}>保存</Button>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* 主内容区 */}
@@ -142,6 +313,9 @@ export default function Home() {
         {/* 底部说明 */}
         <div className="mt-8 rounded-lg border border-slate-200 bg-white p-4 text-center text-sm text-slate-500 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-400">
           <p>支持解析 SELECT 查询语句中的字段，自动推断字段类型并生成建表 DDL</p>
+          <p className="mt-2">
+            点击上方"类型推断规则配置"可自定义字段类型推断规则
+          </p>
         </div>
       </div>
     </div>

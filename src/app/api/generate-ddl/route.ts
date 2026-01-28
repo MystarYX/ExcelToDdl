@@ -6,6 +6,13 @@ interface FieldInfo {
   comment: string;
 }
 
+interface TypeRule {
+  id: string;
+  keywords: string[];
+  dataType: string;
+  priority: number;
+}
+
 function parseSQLFields(sql: string): FieldInfo[] {
   const fields: FieldInfo[] = [];
 
@@ -185,9 +192,28 @@ function parseFieldExpression(expr: string, commentMap: Map<string, string>): Fi
   };
 }
 
-function inferFieldType(fieldName: string): string {
+function inferFieldType(fieldName: string, customRules?: TypeRule[]): string {
   const name = fieldName.toLowerCase();
 
+  // 如果有自定义规则，按优先级使用自定义规则
+  if (customRules && customRules.length > 0) {
+    // 按优先级排序
+    const sortedRules = [...customRules].sort((a, b) => a.priority - b.priority);
+
+    for (const rule of sortedRules) {
+      for (const keyword of rule.keywords) {
+        // 支持精确匹配和包含匹配
+        if (
+          name === keyword.toLowerCase() ||
+          name.includes(keyword.toLowerCase())
+        ) {
+          return rule.dataType;
+        }
+      }
+    }
+  }
+
+  // 默认规则
   // 币种代码字段 - 必须在最前面判断
   if (
     name === 'fcytp' ||
@@ -301,14 +327,14 @@ function inferFieldType(fieldName: string): string {
   return 'STRING';
 }
 
-function generateDDL(fields: FieldInfo[]): string {
+function generateDDL(fields: FieldInfo[], customRules?: TypeRule[]): string {
   const maxNameLength = Math.max(...fields.map(f => f.name.length), 30);
   const maxTypeLength = 18;
 
   let ddl = 'CREATE TABLE IF NOT EXISTS 表名 (\n';
 
   fields.forEach((field, index) => {
-    const fieldType = inferFieldType(field.name);
+    const fieldType = inferFieldType(field.name, customRules);
     const paddedName = field.name.padEnd(maxNameLength);
     const paddedType = fieldType.padEnd(maxTypeLength);
 
@@ -329,7 +355,7 @@ function generateDDL(fields: FieldInfo[]): string {
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { sql } = body;
+    const { sql, customRules } = body;
 
     if (!sql || typeof sql !== 'string') {
       return NextResponse.json(
@@ -347,7 +373,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const ddl = generateDDL(fields);
+    const ddl = generateDDL(fields, customRules);
 
     return NextResponse.json({ ddl });
   } catch (error) {
