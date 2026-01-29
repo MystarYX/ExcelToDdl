@@ -241,20 +241,53 @@ function splitFields(selectClause: string): string[] {
   const fieldExpressions: string[] = [];
   let current = '';
   let parenCount = 0;
+  let caseCount = 0;
+  let i = 0;
 
-  for (const char of selectClause) {
-    if (char === '(') {
+  while (i < selectClause.length) {
+    const char = selectClause[i];
+
+    // 检查是否是 CASE 关键字（必须在单词边界上）
+    if (parenCount === 0 && caseCount === 0 && 
+        char.toUpperCase() === 'C' && 
+        selectClause.substr(i, 4).toUpperCase() === 'CASE') {
+      // 检查前后是否为单词边界
+      const prevChar = i === 0 ? ' ' : selectClause[i - 1];
+      const nextChar = i + 4 >= selectClause.length ? ' ' : selectClause[i + 4];
+      
+      if (/\s/.test(prevChar) && /\s/.test(nextChar)) {
+        caseCount++;
+      }
+      current += char;
+    } 
+    // 检查是否是 END 关键字
+    else if (caseCount > 0 && char.toUpperCase() === 'E' && 
+             selectClause.substr(i, 3).toUpperCase() === 'END') {
+      const prevChar = i === 0 ? ' ' : selectClause[i - 1];
+      const nextChar = i + 3 >= selectClause.length ? ' ' : selectClause[i + 3];
+      
+      if (/\s/.test(prevChar) && /\s/.test(nextChar)) {
+        caseCount--;
+      }
+      current += char;
+    }
+    // 处理括号
+    else if (char === '(') {
       parenCount++;
       current += char;
     } else if (char === ')') {
       parenCount--;
       current += char;
-    } else if (char === ',' && parenCount === 0) {
+    }
+    // 处理逗号（只有在括号和CASE都关闭时才分割）
+    else if (char === ',' && parenCount === 0 && caseCount === 0) {
       fieldExpressions.push(current.trim());
       current = '';
     } else {
       current += char;
     }
+
+    i++;
   }
 
   if (current.trim()) {
@@ -286,7 +319,18 @@ function parseFieldExpression(expr: string, commentMap?: Record<string, string>)
     const mainExpr = expr.substring(0, aliasMatch.index).trim();
     const alias = aliasMatch[1].trim().replace(/['"`]/g, '');
     // 使用规范化后的表达式查找注释
-    const comment = commentMap[normalizeExpr(mainExpr)] || '';
+    let comment = commentMap[normalizeExpr(mainExpr)] || '';
+    
+    // 如果找不到注释，且表达式包含CASE关键字，尝试用最后一部分的简化表达式查找
+    if (!comment && mainExpr.toUpperCase().includes('CASE')) {
+      // 注释可能在最后一行，只提取了最后一部分（如 "end"）
+      // 尝试从mainExpr中提取最后一行或最后一个标识符
+      const lastWordMatch = mainExpr.match(/(\w+)\s*$/i);
+      if (lastWordMatch) {
+        comment = commentMap[lastWordMatch[1]] || '';
+      }
+    }
+    
     return { name: mainExpr, alias, comment };
   }
 
