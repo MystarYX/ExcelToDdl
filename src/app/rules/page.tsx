@@ -157,23 +157,93 @@ function saveRules(rules: UnifiedRule[]) {
   localStorage.setItem('ddl-rules', JSON.stringify(rules));
 }
 
+// 从localStorage加载选中的数据库
+function loadSelectedDatabases(): string[] {
+  if (typeof window === 'undefined') return ['spark', 'mysql', 'clickhouse'];
+  try {
+    const saved = localStorage.getItem('ddl-selected-databases');
+    return saved ? JSON.parse(saved) : ['spark', 'mysql', 'clickhouse'];
+  } catch {
+    return ['spark', 'mysql', 'clickhouse'];
+  }
+}
+
+// 保存选中的数据库到localStorage
+function saveSelectedDatabases(dbs: string[]) {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('ddl-selected-databases', JSON.stringify(dbs));
+}
+
+// 为数据库创建默认类型
+function createDefaultFieldType(dbType: string): FieldTypeInfo {
+  if (dbType === 'clickhouse') {
+    return { dataType: 'String' };
+  }
+  if (dbType === 'postgresql') {
+    return { dataType: 'TEXT' };
+  }
+  if (['mysql', 'starrocks', 'doris'].includes(dbType)) {
+    return { dataType: 'VARCHAR', length: 255 };
+  }
+  return { dataType: 'STRING' };
+}
+
 export default function RulesPage() {
   const router = useRouter();
   const { toast } = useToast();
   const [unifiedRules, setUnifiedRules] = useState<UnifiedRule[]>(DEFAULT_RULES);
   const [selectedDatabases, setSelectedDatabases] = useState<string[]>(['spark', 'mysql', 'clickhouse']);
 
+  // 初始化加载
   useEffect(() => {
-    const saved = loadRules();
-    setUnifiedRules(saved);
-    const savedDbs = localStorage.getItem('ddl-selected-databases');
-    if (savedDbs) setSelectedDatabases(JSON.parse(savedDbs));
+    const savedRules = loadRules();
+    const savedDbs = loadSelectedDatabases();
+    setUnifiedRules(savedRules);
+    setSelectedDatabases(savedDbs);
   }, []);
 
+  // 当选中的数据库变化时，更新所有规则的 typeByDatabase
   useEffect(() => {
-    saveRules(unifiedRules);
-    localStorage.setItem('ddl-selected-databases', JSON.stringify(selectedDatabases));
-  }, [unifiedRules, selectedDatabases]);
+    saveSelectedDatabases(selectedDatabases);
+
+    // 更新规则以匹配选中的数据库
+    setUnifiedRules(prevRules => {
+      return prevRules.map(rule => {
+        const newTypeByDatabase: Record<string, FieldTypeInfo> = {};
+
+        // 只保留选中的数据库
+        selectedDatabases.forEach(dbType => {
+          if (rule.typeByDatabase[dbType]) {
+            // 如果已有配置，保留
+            newTypeByDatabase[dbType] = rule.typeByDatabase[dbType];
+          } else {
+            // 如果没有配置，使用默认值
+            newTypeByDatabase[dbType] = createDefaultFieldType(dbType);
+          }
+        });
+
+        return {
+          ...rule,
+          typeByDatabase: newTypeByDatabase
+        };
+      });
+    });
+  }, [selectedDatabases]);
+
+  // 规则变化时保存
+  useEffect(() => {
+    if (unifiedRules !== DEFAULT_RULES) {
+      saveRules(unifiedRules);
+    }
+  }, [unifiedRules]);
+
+  function toggleDatabase(dbType: string) {
+    setSelectedDatabases(prev => 
+      prev.includes(dbType) 
+        ? prev.filter(d => d !== dbType)
+        : [...prev, dbType]
+    );
+  }
 
   function addRule() {
     const newRule: UnifiedRule = {
@@ -183,7 +253,7 @@ export default function RulesPage() {
       targetField: 'name',
       priority: unifiedRules.length + 1,
       typeByDatabase: selectedDatabases.reduce((acc, db) => {
-        acc[db] = { dataType: 'STRING' };
+        acc[db] = createDefaultFieldType(db);
         return acc;
       }, {} as Record<string, FieldTypeInfo>),
     };
@@ -261,6 +331,25 @@ export default function RulesPage() {
             </Button>
           </div>
         </div>
+
+        {/* 数据库选择器 */}
+        <Card className="border border-slate-200 bg-white">
+          <CardContent className="p-4">
+            <Label className="text-sm font-medium text-slate-700 mb-3 block">目标数据库选择</Label>
+            <div className="flex gap-2 flex-wrap">
+              {DATABASE_TYPES.map(db => (
+                <Button
+                  key={db.value}
+                  variant={selectedDatabases.includes(db.value) ? 'default' : 'outline'}
+                  size="sm"
+                  onClick={() => toggleDatabase(db.value)}
+                >
+                  {db.label}
+                </Button>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
 
         <div className="space-y-6">
           {unifiedRules.map((rule, index) => (
