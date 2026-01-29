@@ -19,24 +19,12 @@ const DEFAULT_GLOBAL_RULES: GlobalRule[] = [
     keywords: ['amt', 'amount', 'price', '金额', '价格'],
     matchType: 'contains',
     targetField: 'name',
-    targetDatabases: ['spark', 'mysql', 'postgresql', 'starrocks', 'hive', 'doris'],
+    targetDatabases: ['spark'],
     dataTypes: {
-      spark: 'DECIMAL',
-      mysql: 'DECIMAL',
-      postgresql: 'DECIMAL',
-      starrocks: 'DECIMAL',
-      clickhouse: 'Decimal',
-      hive: 'DECIMAL',
-      doris: 'DECIMAL'
+      spark: 'DECIMAL'
     },
     typeParams: {
-      spark: { precision: 24, scale: 6 },
-      mysql: { precision: 24, scale: 6 },
-      postgresql: { precision: 24, scale: 6 },
-      starrocks: { precision: 24, scale: 6 },
-      clickhouse: { precision: 24, scale: 6 },
-      hive: { precision: 24, scale: 6 },
-      doris: { precision: 24, scale: 6 }
+      spark: { precision: 24, scale: 6 }
     },
     priority: 1
   },
@@ -45,15 +33,9 @@ const DEFAULT_GLOBAL_RULES: GlobalRule[] = [
     keywords: ['date', '日期'],
     matchType: 'contains',
     targetField: 'name',
-    targetDatabases: ['spark', 'mysql', 'postgresql', 'starrocks', 'hive', 'doris'],
+    targetDatabases: ['spark'],
     dataTypes: {
-      spark: 'DATE',
-      mysql: 'DATE',
-      postgresql: 'DATE',
-      starrocks: 'DATE',
-      clickhouse: 'Date',
-      hive: 'DATE',
-      doris: 'DATE'
+      spark: 'DATE'
     },
     typeParams: {},
     priority: 1
@@ -63,15 +45,9 @@ const DEFAULT_GLOBAL_RULES: GlobalRule[] = [
     keywords: ['time', 'timestamp', '时间'],
     matchType: 'contains',
     targetField: 'name',
-    targetDatabases: ['spark', 'mysql', 'postgresql', 'starrocks', 'hive', 'doris'],
+    targetDatabases: ['spark'],
     dataTypes: {
-      spark: 'TIMESTAMP',
-      mysql: 'DATETIME',
-      postgresql: 'TIMESTAMP',
-      starrocks: 'DATETIME',
-      clickhouse: 'DateTime',
-      hive: 'TIMESTAMP',
-      doris: 'DATETIME'
+      spark: 'TIMESTAMP'
     },
     typeParams: {},
     priority: 1
@@ -81,15 +57,9 @@ const DEFAULT_GLOBAL_RULES: GlobalRule[] = [
     keywords: ['id', 'icode'],
     matchType: 'contains',
     targetField: 'name',
-    targetDatabases: ['spark', 'mysql', 'postgresql', 'starrocks', 'hive', 'doris'],
+    targetDatabases: ['spark'],
     dataTypes: {
-      spark: 'STRING',
-      mysql: 'BIGINT',
-      postgresql: 'BIGINT',
-      starrocks: 'BIGINT',
-      clickhouse: 'Int64',
-      hive: 'BIGINT',
-      doris: 'BIGINT'
+      spark: 'STRING'
     },
     typeParams: {},
     priority: 1
@@ -99,22 +69,11 @@ const DEFAULT_GLOBAL_RULES: GlobalRule[] = [
     keywords: ['name', '名称', '描述', '备注'],
     matchType: 'contains',
     targetField: 'name',
-    targetDatabases: ['spark', 'mysql', 'postgresql', 'starrocks', 'hive', 'doris'],
+    targetDatabases: ['spark'],
     dataTypes: {
-      spark: 'STRING',
-      mysql: 'VARCHAR',
-      postgresql: 'VARCHAR',
-      starrocks: 'VARCHAR',
-      clickhouse: 'String',
-      hive: 'STRING',
-      doris: 'VARCHAR'
+      spark: 'STRING'
     },
-    typeParams: {
-      mysql: { length: 255 },
-      postgresql: { length: 255 },
-      starrocks: { length: 255 },
-      doris: { length: 255 }
-    },
+    typeParams: {},
     priority: 1
   }
 ];
@@ -349,22 +308,11 @@ export default function Home() {
       keywords: [],
       matchType: 'contains',
       targetField: 'name',
-      targetDatabases: ['spark', 'mysql', 'postgresql', 'starrocks', 'hive', 'doris', 'clickhouse'],
+      targetDatabases: ['spark'],
       dataTypes: {
-        spark: 'STRING',
-        mysql: 'VARCHAR',
-        postgresql: 'VARCHAR',
-        starrocks: 'VARCHAR',
-        clickhouse: 'String',
-        hive: 'STRING',
-        doris: 'VARCHAR'
+        spark: 'STRING'
       },
-      typeParams: {
-        mysql: { length: 255 },
-        postgresql: { length: 255 },
-        starrocks: { length: 255 },
-        doris: { length: 255 }
-      },
+      typeParams: {},
       priority: 999
     };
     setGlobalRules([...globalRules, newRule]);
