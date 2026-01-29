@@ -163,15 +163,13 @@ export default function Home() {
   // 当数据库类型改变时，初始化或清理规则
   const handleDatabaseTypeChange = (dbType: string, checked: boolean) => {
     if (checked) {
-      if (selectedDatabaseTypes.length < 2) {
-        const newTypes = [...selectedDatabaseTypes, dbType];
-        setSelectedDatabaseTypes(newTypes);
-        // 为新选择的数据库初始化默认规则
-        setRulesByDatabase(prev => ({
-          ...prev,
-          [dbType]: defaultRules,
-        }));
-      }
+      const newTypes = [...selectedDatabaseTypes, dbType];
+      setSelectedDatabaseTypes(newTypes);
+      // 为新选择的数据库初始化默认规则
+      setRulesByDatabase(prev => ({
+        ...prev,
+        [dbType]: defaultRules,
+      }));
     } else {
       setSelectedDatabaseTypes(selectedDatabaseTypes.filter(t => t !== dbType));
       // 删除对应的规则
@@ -200,7 +198,7 @@ export default function Home() {
         <div className="mb-6 rounded-lg border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-800">
           <div>
             <label className="mb-2 block text-sm font-medium text-slate-700 dark:text-slate-300">
-              目标数据库类型（最多选择2个）
+              目标数据库类型
             </label>
             <p className="mb-3 text-xs text-slate-500 dark:text-slate-400">
               选择要生成建表语句的数据库类型
