@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SQL 建表语句生成器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+        h1 {
+            text-align: center;
+            color: #1a202c;
+            margin-bottom: 10px;
+        }
+        .subtitle {
+            text-align: center;
+            color: #4a5568;
+            margin-bottom: 30px;
+        }
+        .card {
+            background: white;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        .card-title {
+            font-weight: 600;
+            margin-bottom: 15px;
+            color: #2d3748;
+        }
+        .db-selector {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+        .db-option {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .db-option:hover {
+            background: #f7fafc;
+        }
+        .db-option input {
+            cursor: pointer;
+        }
+        .grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        textarea {
+            width: 100%;
+            min-height: 400px;
+            padding: 12px;
+            border: 1px solid #e2e8f0;
+            border-radius: 6px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            resize: vertical;
+        }
+        textarea:focus {
+            outline: none;
+            border-color: #3182ce;
+        }
+        .btn {
+            background: #3182ce;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            width: 100%;
+            margin-top: 10px;
+            transition: background 0.2s;
+        }
+        .btn:hover {
+            background: #2c5282;
+        }
+        .btn:disabled {
+            background: #a0aec0;
+            cursor: not-allowed;
+        }
+        .btn-copy {
+            background: #48bb78;
+            padding: 6px 12px;
+            font-size: 14px;
+            width: auto;
+            margin-top: 0;
+        }
+        .btn-copy:hover {
+            background: #38a169;
+        }
+        .header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        .error {
+            background: #fed7d7;
+            color: #c53030;
+            padding: 12px;
+            border-radius: 6px;
+            margin-top: 10px;
+        }
+        .output-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        @media (max-width: 768px) {
+            .grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>SQL 建表语句生成器</h1>
+        <p class="subtitle">自动解析SQL查询，生成符合规范的建表语句</p>
+
+        <!-- 数据库类型选择 -->
+        <div class="card">
+            <h3 class="card-title">目标数据库类型</h3>
+            <div class="db-selector" id="dbSelector">
+                <label class="db-option">
+                    <input type="checkbox" value="spark" checked> Spark SQL
+                </label>
+                <label class="db-option">
+                    <input type="checkbox" value="mysql"> MySQL
+                </label>
+                <label class="db-option">
+                    <input type="checkbox" value="postgresql"> PostgreSQL
+                </label>
+                <label class="db-option">
+                    <input type="checkbox" value="starrocks"> StarRocks
+                </label>
+                <label class="db-option">
+                    <input type="checkbox" value="clickhouse"> ClickHouse
+                </label>
+                <label class="db-option">
+                    <input type="checkbox" value="hive"> Hive
+                </label>
+                <label class="db-option">
+                    <input type="checkbox" value="doris"> Doris
+                </label>
+            </div>
+        </div>
+
+        <!-- 主内容区 -->
+        <div class="grid">
+            <!-- 输入区 -->
+            <div class="card">
+                <div class="header">
+                    <h3 class="card-title">输入SQL查询语句</h3>
+                    <span id="charCount" style="color: #718096; font-size: 14px;">0 字符</span>
+                </div>
+                <textarea id="sqlInput" placeholder="请输入SELECT查询语句或字段列表...
+
+示例：
+SELECT
+  org_id,
+  trcl_id,
+  cust_id,
+  business_date,
+  credit_amt,
+  quantity
+FROM credit_usage_detail"></textarea>
+                <button id="generateBtn" class="btn" onclick="generateDDL()">生成建表语句</button>
+                <div id="error" class="error" style="display: none;"></div>
+            </div>
+
+            <!-- 输出区 -->
+            <div class="card">
+                <div class="output-header">
+                    <h3 class="card-title" id="outputTitle">Spark SQL 建表语句</h3>
+                    <button class="btn btn-copy" onclick="copyDDL()">复制</button>
+                </div>
+                <textarea id="ddlOutput" readonly placeholder="生成的建表语句将显示在这里..."></textarea>
+            </div>
+        </div>
+
+        <!-- 底部说明 -->
+        <div class="card" style="text-align: center; color: #718096;">
+            <p>支持解析 SELECT 查询语句中的字段，自动推断字段类型并生成建表 DDL</p>
+            <p style="margin-top: 10px;">支持多种数据库类型：Spark SQL、MySQL、PostgreSQL、StarRocks、ClickHouse、Hive、Doris</p>
+        </div>
+    </div>
+
+    <script>
+        // 字符计数
+        document.getElementById('sqlInput').addEventListener('input', function() {
+            document.getElementById('charCount').textContent = this.value.length + ' 字符';
+        });
+
+        // 生成DDL
+        async function generateDDL() {
+            const sql = document.getElementById('sqlInput').value.trim();
+            const errorDiv = document.getElementById('error');
+            const generateBtn = document.getElementById('generateBtn');
+
+            if (!sql) {
+                errorDiv.textContent = '请输入SQL查询语句';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            // 获取选中的数据库类型
+            const dbTypes = Array.from(document.querySelectorAll('#dbSelector input:checked'))
+                .map(cb => cb.value);
+
+            if (dbTypes.length === 0) {
+                errorDiv.textContent = '请至少选择一个数据库类型';
+                errorDiv.style.display = 'block';
+                return;
+            }
+
+            errorDiv.style.display = 'none';
+            generateBtn.disabled = true;
+            generateBtn.textContent = '生成中...';
+
+            try {
+                const response = await fetch('/api/generate-ddl', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        sql: sql,
+                        rulesByDatabase: {},
+                        databaseTypes: dbTypes
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.detail || '生成失败');
+                }
+
+                // 更新输出
+                if (data.ddls) {
+                    const ddls = data.ddls.map(d => `-- ${d.label}\n${d.ddl}`).join('\n\n');
+                    document.getElementById('ddlOutput').value = ddls;
+                    document.getElementById('outputTitle').textContent = `建表语句 (${dbTypes.length} 个数据库)`;
+                } else {
+                    document.getElementById('ddlOutput').value = data.ddl;
+                    const dbLabel = dbTypes[0] === 'spark' ? 'Spark SQL' :
+                                   dbTypes[0] === 'mysql' ? 'MySQL' :
+                                   dbTypes[0] === 'postgresql' ? 'PostgreSQL' :
+                                   dbTypes[0].charAt(0).toUpperCase() + dbTypes[0].slice(1);
+                    document.getElementById('outputTitle').textContent = `${dbLabel} 建表语句`;
+                }
+
+            } catch (err) {
+                errorDiv.textContent = err.message;
+                errorDiv.style.display = 'block';
+            } finally {
+                generateBtn.disabled = false;
+                generateBtn.textContent = '生成建表语句';
+            }
+        }
+
+        // 复制DDL
+        function copyDDL() {
+            const ddl = document.getElementById('ddlOutput').value;
+            if (ddl) {
+                navigator.clipboard.writeText(ddl);
+                const copyBtn = document.querySelector('.btn-copy');
+                const originalText = copyBtn.textContent;
+                copyBtn.textContent = '已复制!';
+                setTimeout(() => {
+                    copyBtn.textContent = originalText;
+                }, 2000);
+            }
+        }
+    </script>
+</body>
+</html>

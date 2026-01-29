@@ -32,7 +32,7 @@ const databaseConfigs: Record<DatabaseType, {
     tableNamePrefix: '',
   },
   mysql: {
-    createTablePrefix: 'CREATE TABLE IF NOT EXISTS',
+    createTablePrefix: 'CREATE TABLE ',
     createTableSuffix: ') COMMENT',
     commentSyntax: 'INLINE',
     supportsCreateIfNotExists: true,
@@ -46,8 +46,8 @@ const databaseConfigs: Record<DatabaseType, {
     tableNamePrefix: '',
   },
   starrocks: {
-    createTablePrefix: 'CREATE TABLE IF NOT EXISTS',
-    createTableSuffix: ') COMMENT',
+    createTablePrefix: 'CREATE TABLE ',
+    createTableSuffix: ) COMMENT',
     commentSyntax: 'INLINE',
     supportsCreateIfNotExists: true,
     tableNamePrefix: '',
