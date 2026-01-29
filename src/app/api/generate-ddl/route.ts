@@ -78,6 +78,35 @@ const databaseConfigs: Record<DatabaseType, {
 function parseSQLFields(sql: string): FieldInfo[] {
   const fields: FieldInfo[] = [];
 
+  const trimmedSql = sql.trim();
+
+  // 策略1: 尝试解析标准 SELECT ... FROM 语句
+  if (trimmedSql.toUpperCase().includes('SELECT')) {
+    const result = tryParseSelectFrom(trimmedSql);
+    if (result.length > 0) {
+      return result;
+    }
+  }
+
+  // 策略2: 如果没有找到 FROM，但有 SELECT，尝试解析 SELECT 后的字段列表
+  if (trimmedSql.toUpperCase().includes('SELECT')) {
+    const result = tryParseSelectFields(trimmedSql);
+    if (result.length > 0) {
+      return result;
+    }
+  }
+
+  // 策略3: 尝试按逗号分割的字段列表（无 SELECT 关键字）
+  const result = tryParseFieldList(trimmedSql);
+  if (result.length > 0) {
+    return result;
+  }
+
+  throw new Error('无法解析SQL，请确保输入的是有效的SELECT查询或字段列表');
+}
+
+// 策略1: 解析标准 SELECT ... FROM 语句
+function tryParseSelectFrom(sql: string): FieldInfo[] {
   // 提取 SELECT ... FROM 之间的内容（支持多行和复杂子查询）
   // 使用平衡括号计数来确保找到正确的FROM
   let parenCount = 0;
@@ -87,7 +116,7 @@ function parseSQLFields(sql: string): FieldInfo[] {
   // 找到SELECT关键字的位置（支持INSERT INTO...SELECT）
   const selectMatch = sql.match(/\bSELECT\b/i);
   if (!selectMatch || selectMatch.index === undefined) {
-    throw new Error('无法解析SQL，请确保输入的是有效的SELECT查询');
+    return [];
   }
   selectStart = selectMatch.index + selectMatch[0].length;
 
@@ -117,10 +146,91 @@ function parseSQLFields(sql: string): FieldInfo[] {
   }
 
   if (fromPos === -1) {
-    throw new Error('无法找到FROM关键字，请检查SQL格式');
+    return [];
   }
 
   const selectClause = sql.substring(selectStart, fromPos).trim();
+  return parseSelectClause(selectClause);
+}
+
+// 策略2: 解析 SELECT 后的字段列表（无 FROM）
+function tryParseSelectFields(sql: string): FieldInfo[] {
+  const selectMatch = sql.match(/\bSELECT\b/i);
+  if (!selectMatch || selectMatch.index === undefined) {
+    return [];
+  }
+
+  const selectStart = selectMatch.index + selectMatch[0].length;
+  let selectClause = sql.substring(selectStart).trim();
+
+  // 移除可能存在的其他关键字（如 WHERE, GROUP BY, ORDER BY, LIMIT 等）
+  const stopKeywords = ['WHERE', 'GROUP BY', 'ORDER BY', 'HAVING', 'LIMIT', 'UNION', 'INTERSECT', 'EXCEPT'];
+  for (const keyword of stopKeywords) {
+    const keywordMatch = selectClause.match(new RegExp(`\\b${keyword}\\b`, 'i'));
+    if (keywordMatch && keywordMatch.index !== undefined) {
+      selectClause = selectClause.substring(0, keywordMatch.index).trim();
+      break;
+    }
+  }
+
+  return parseSelectClause(selectClause);
+}
+
+// 策略3: 解析逗号分隔的字段列表
+function tryParseFieldList(sql: string): FieldInfo[] {
+  // 移除注释
+  const cleanSql = sql.replace(/--.*$/gm, '').replace(/\/\*[\s\S]*?\*\//g, '').trim();
+
+  // 按逗号分割，但要考虑括号内的逗号
+  const fieldExpressions: string[] = [];
+  let current = '';
+  let parenCount = 0;
+  let inQuote = false;
+  let quoteChar = '';
+
+  for (let i = 0; i < cleanSql.length; i++) {
+    const char = cleanSql[i];
+
+    if (!inQuote && (char === '"' || char === "'" || char === '`')) {
+      inQuote = true;
+      quoteChar = char;
+      current += char;
+    } else if (inQuote && char === quoteChar) {
+      inQuote = false;
+      current += char;
+    } else if (char === '(' && !inQuote) {
+      parenCount++;
+      current += char;
+    } else if (char === ')' && !inQuote) {
+      parenCount--;
+      current += char;
+    } else if (char === ',' && parenCount === 0 && !inQuote) {
+      fieldExpressions.push(current.trim());
+      current = '';
+    } else {
+      current += char;
+    }
+  }
+
+  if (current.trim()) {
+    fieldExpressions.push(current.trim());
+  }
+
+  // 解析每个字段
+  const fields: FieldInfo[] = [];
+  for (const expr of fieldExpressions) {
+    const field = parseFieldExpression(expr, new Map());
+    if (field) {
+      fields.push(field);
+    }
+  }
+
+  return fields;
+}
+
+// 解析 SELECT 子句
+function parseSelectClause(selectClause: string): FieldInfo[] {
+  const fields: FieldInfo[] = [];
 
   // 提取注释并建立映射（按行处理）
   const commentMap = new Map<string, string>();
