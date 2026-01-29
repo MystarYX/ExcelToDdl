@@ -9,6 +9,7 @@ interface GlobalRule {
   targetField: 'name' | 'comment';
   targetDatabases: string[];
   dataTypes: Record<string, string>;
+  typeParams: Record<string, { precision?: number; scale?: number; length?: number; }>;
   priority: number;
 }
 
@@ -20,13 +21,22 @@ const DEFAULT_GLOBAL_RULES: GlobalRule[] = [
     targetField: 'name',
     targetDatabases: ['spark', 'mysql', 'postgresql', 'starrocks', 'hive', 'doris'],
     dataTypes: {
-      spark: 'DECIMAL(24, 6)',
-      mysql: 'DECIMAL(24, 6)',
-      postgresql: 'DECIMAL(24, 6)',
-      starrocks: 'DECIMAL(24, 6)',
-      clickhouse: 'Decimal(24, 6)',
-      hive: 'DECIMAL(24, 6)',
-      doris: 'DECIMAL(24, 6)'
+      spark: 'DECIMAL',
+      mysql: 'DECIMAL',
+      postgresql: 'DECIMAL',
+      starrocks: 'DECIMAL',
+      clickhouse: 'Decimal',
+      hive: 'DECIMAL',
+      doris: 'DECIMAL'
+    },
+    typeParams: {
+      spark: { precision: 24, scale: 6 },
+      mysql: { precision: 24, scale: 6 },
+      postgresql: { precision: 24, scale: 6 },
+      starrocks: { precision: 24, scale: 6 },
+      clickhouse: { precision: 24, scale: 6 },
+      hive: { precision: 24, scale: 6 },
+      doris: { precision: 24, scale: 6 }
     },
     priority: 1
   },
@@ -45,6 +55,7 @@ const DEFAULT_GLOBAL_RULES: GlobalRule[] = [
       hive: 'DATE',
       doris: 'DATE'
     },
+    typeParams: {},
     priority: 1
   },
   {
@@ -62,6 +73,7 @@ const DEFAULT_GLOBAL_RULES: GlobalRule[] = [
       hive: 'TIMESTAMP',
       doris: 'DATETIME'
     },
+    typeParams: {},
     priority: 1
   },
   {
@@ -79,6 +91,7 @@ const DEFAULT_GLOBAL_RULES: GlobalRule[] = [
       hive: 'BIGINT',
       doris: 'BIGINT'
     },
+    typeParams: {},
     priority: 1
   },
   {
@@ -89,12 +102,18 @@ const DEFAULT_GLOBAL_RULES: GlobalRule[] = [
     targetDatabases: ['spark', 'mysql', 'postgresql', 'starrocks', 'hive', 'doris'],
     dataTypes: {
       spark: 'STRING',
-      mysql: 'VARCHAR(255)',
-      postgresql: 'VARCHAR(255)',
-      starrocks: 'VARCHAR(255)',
+      mysql: 'VARCHAR',
+      postgresql: 'VARCHAR',
+      starrocks: 'VARCHAR',
       clickhouse: 'String',
       hive: 'STRING',
-      doris: 'VARCHAR(255)'
+      doris: 'VARCHAR'
+    },
+    typeParams: {
+      mysql: { length: 255 },
+      postgresql: { length: 255 },
+      starrocks: { length: 255 },
+      doris: { length: 255 }
     },
     priority: 1
   }
@@ -156,18 +175,36 @@ export default function Home() {
   // 将全局规则转换为按数据库分组的规则（用于API调用）
   const convertToRulesByDatabase = (rules: GlobalRule[]): Record<string, any[]> => {
     const result: Record<string, any[]> = {};
-    
+
     Object.keys(DB_LABELS).forEach(dbType => {
       result[dbType] = [];
     });
 
     rules.forEach(rule => {
       rule.targetDatabases.forEach(dbType => {
+        const baseType = rule.dataTypes[dbType] || rule.dataTypes['spark'];
+        const params = rule.typeParams[dbType] || {};
+        
+        // 构建带参数的完整类型字符串
+        let fullType = baseType;
+        const upper = baseType.toUpperCase();
+
+        if (params.precision !== undefined && params.scale !== undefined && 
+            (upper.includes('DECIMAL') || upper.includes('NUMERIC'))) {
+          fullType = `${baseType}(${params.precision}, ${params.scale})`;
+        } else if (params.length !== undefined && 
+                   (upper.includes('VARCHAR') || upper.includes('CHAR'))) {
+          fullType = `${baseType}(${params.length})`;
+        } else if (params.precision !== undefined && 
+                   (upper.includes('FLOAT') || upper.includes('DOUBLE'))) {
+          fullType = `${baseType}(${params.precision})`;
+        }
+
         result[dbType].push({
           keywords: rule.keywords,
           matchType: rule.matchType,
           targetField: rule.targetField,
-          dataType: rule.dataTypes[dbType] || rule.dataTypes['spark'],
+          dataType: fullType,
           priority: rule.priority
         });
       });
@@ -240,12 +277,18 @@ export default function Home() {
       targetDatabases: ['spark', 'mysql', 'postgresql', 'starrocks', 'hive', 'doris', 'clickhouse'],
       dataTypes: {
         spark: 'STRING',
-        mysql: 'VARCHAR(255)',
-        postgresql: 'VARCHAR(255)',
-        starrocks: 'VARCHAR(255)',
+        mysql: 'VARCHAR',
+        postgresql: 'VARCHAR',
+        starrocks: 'VARCHAR',
         clickhouse: 'String',
         hive: 'STRING',
-        doris: 'VARCHAR(255)'
+        doris: 'VARCHAR'
+      },
+      typeParams: {
+        mysql: { length: 255 },
+        postgresql: { length: 255 },
+        starrocks: { length: 255 },
+        doris: { length: 255 }
       },
       priority: 999
     };
@@ -263,6 +306,95 @@ export default function Home() {
       rule.id === id ? { ...rule, ...updates } : rule
     ));
     saveRules();
+  };
+
+  const updateTypeParam = (ruleId: string, dbType: string, paramUpdates: any) => {
+    setGlobalRules(globalRules.map(rule => {
+      if (rule.id !== ruleId) return rule;
+      
+      const newTypeParams = { ...rule.typeParams };
+      newTypeParams[dbType] = { ...newTypeParams[dbType], ...paramUpdates };
+      
+      return { ...rule, typeParams: newTypeParams };
+    }));
+    saveRules();
+  };
+
+  const hasTypeParams = (dataType: string) => {
+    const upper = dataType.toUpperCase();
+    return upper.includes('VARCHAR') || upper.includes('CHAR') ||
+           upper.includes('DECIMAL') || upper.includes('NUMERIC') ||
+           upper.includes('FLOAT') || upper.includes('DOUBLE');
+  };
+
+  const renderTypeParams = (rule: GlobalRule, dbType: string) => {
+    const dataType = rule.dataTypes[dbType];
+    if (!dataType) return null;
+    
+    const upper = dataType.toUpperCase();
+    const params = rule.typeParams[dbType] || {};
+
+    if (!hasTypeParams(dataType)) return null;
+
+    if (upper.includes('DECIMAL') || upper.includes('NUMERIC')) {
+      return (
+        <div className="flex gap-2 mt-2">
+          <div className="flex-1">
+            <input
+              type="number"
+              value={params.precision || 24}
+              onChange={(e) => updateTypeParam(rule.id, dbType, { precision: parseInt(e.target.value) })}
+              className="w-full px-2 py-1 text-xs border rounded"
+              min="1"
+              max="65"
+              placeholder="精度"
+            />
+          </div>
+          <div className="flex-1">
+            <input
+              type="number"
+              value={params.scale || 6}
+              onChange={(e) => updateTypeParam(rule.id, dbType, { scale: parseInt(e.target.value) })}
+              className="w-full px-2 py-1 text-xs border rounded"
+              min="0"
+              max="30"
+              placeholder="小数位"
+            />
+          </div>
+        </div>
+      );
+    } else if (upper.includes('VARCHAR') || upper.includes('CHAR')) {
+      return (
+        <div className="mt-2">
+          <input
+            type="number"
+            value={params.length || 255}
+            onChange={(e) => updateTypeParam(rule.id, dbType, { length: parseInt(e.target.value) })}
+            className="w-full px-2 py-1 text-xs border rounded"
+            min="1"
+            max="65535"
+            placeholder="长度"
+          />
+        </div>
+      );
+    } else if (upper.includes('FLOAT') || upper.includes('DOUBLE')) {
+      return (
+        <div className="mt-2">
+          <input
+            type="number"
+            value={params.precision || ''}
+            onChange={(e) => updateTypeParam(rule.id, dbType, {
+              precision: e.target.value ? parseInt(e.target.value) : undefined
+            })}
+            className="w-full px-2 py-1 text-xs border rounded"
+            min="1"
+            max="255"
+            placeholder="精度"
+          />
+        </div>
+      );
+    }
+    return null;
   };
 
   return (
@@ -496,6 +628,7 @@ export default function Home() {
                               <option key={opt} value={opt}>{opt}</option>
                             ))}
                           </select>
+                          {rule.targetDatabases.includes(dbType) && renderTypeParams(rule, dbType)}
                         </div>
                       ))}
                     </div>
