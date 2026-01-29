@@ -489,6 +489,12 @@ class APIHandler(SimpleHTTPRequestHandler):
         .btn-delete { background: #dc3545; color: white; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; font-size: 12px; }
         .btn-delete:hover { background: #c82333; }
         .rule-header { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr 80px 40px; gap: 10px; margin-bottom: 10px; font-size: 12px; color: #666; font-weight: 600; }
+        .tabs { display: flex; gap: 4px; margin-bottom: 20px; border-bottom: 2px solid #007bff; }
+        .tab { padding: 12px 24px; background: #f8f9fa; border: 1px solid #ddd; border-bottom: none; border-radius: 6px 6px 0 0; cursor: pointer; font-weight: 500; color: #666; transition: all 0.3s; }
+        .tab:hover { background: #e9ecef; }
+        .tab.active { background: #007bff; color: white; border-color: #007bff; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
     </style>
 </head>
 <body>
@@ -496,31 +502,34 @@ class APIHandler(SimpleHTTPRequestHandler):
         <h1>SQL建表语句生成器</h1>
         <p class="subtitle">自动解析SQL查询，生成符合规范的建表语句</p>
 
-        <div class="card">
-            <h3 class="card-title">目标数据库类型</h3>
-            <div class="db-selector" id="dbSelector">
-                <label class="db-option"><input type="checkbox" value="spark" checked onchange="toggleMapping('spark')"> Spark SQL</label>
-                <label class="db-option"><input type="checkbox" value="mysql" onchange="toggleMapping('mysql')"> MySQL</label>
-                <label class="db-option"><input type="checkbox" value="postgresql" onchange="toggleMapping('postgresql')"> PostgreSQL</label>
-                <label class="db-option"><input type="checkbox" value="starrocks" onchange="toggleMapping('starrocks')"> StarRocks</label>
-                <label class="db-option"><input type="checkbox" value="clickhouse" onchange="toggleMapping('clickhouse')"> ClickHouse</label>
-                <label class="db-option"><input type="checkbox" value="hive" onchange="toggleMapping('hive')"> Hive</label>
-                <label class="db-option"><input type="checkbox" value="doris" onchange="toggleMapping('doris')"> Doris</label>
-            </div>
+        <!-- 标签页导航 -->
+        <div class="tabs">
+            <div class="tab active" onclick="switchTab('generator')">DDL生成器</div>
+            <div class="tab" onclick="switchTab('rules')">规则管理器</div>
         </div>
 
-        <div class="card" id="mappingCard" style="display: none;">
-            <h3 class="card-title">字段类型推断规则</h3>
-            <div id="mappingContainer"></div>
-        </div>
-
-        <div class="grid">
+        <!-- 标签页1: DDL生成器 -->
+        <div class="tab-content active" id="tab-generator">
             <div class="card">
-                <div class="header">
-                    <h3 class="card-title">输入SQL查询语句</h3>
-                    <span id="charCount" style="color: #666;">0 字符</span>
+                <h3 class="card-title">目标数据库类型</h3>
+                <div class="db-selector" id="dbSelector">
+                    <label class="db-option"><input type="checkbox" value="spark" checked> Spark SQL</label>
+                    <label class="db-option"><input type="checkbox" value="mysql"> MySQL</label>
+                    <label class="db-option"><input type="checkbox" value="postgresql"> PostgreSQL</label>
+                    <label class="db-option"><input type="checkbox" value="starrocks"> StarRocks</label>
+                    <label class="db-option"><input type="checkbox" value="clickhouse"> ClickHouse</label>
+                    <label class="db-option"><input type="checkbox" value="hive"> Hive</label>
+                    <label class="db-option"><input type="checkbox" value="doris"> Doris</label>
                 </div>
-                <textarea id="sqlInput" placeholder="请输入SELECT查询语句或字段列表...
+            </div>
+
+            <div class="grid">
+                <div class="card">
+                    <div class="header">
+                        <h3 class="card-title">输入SQL查询语句</h3>
+                        <span id="charCount" style="color: #666;">0 字符</span>
+                    </div>
+                    <textarea id="sqlInput" placeholder="请输入SELECT查询语句或字段列表...
 
 示例：
 SELECT
@@ -530,22 +539,35 @@ SELECT
   business_date,
   credit_amt
 FROM credit_usage_detail"></textarea>
-                <button id="generateBtn" class="btn" onclick="generateDDL()">生成建表语句</button>
-                <div id="error" class="error"></div>
+                    <button id="generateBtn" class="btn" onclick="generateDDL()">生成建表语句</button>
+                    <div id="error" class="error"></div>
+                </div>
+
+                <div class="card">
+                    <div class="header">
+                        <h3 class="card-title" id="outputTitle">Spark SQL 建表语句</h3>
+                        <button class="btn btn-copy" onclick="copyDDL()">复制</button>
+                    </div>
+                    <textarea id="ddlOutput" readonly placeholder="生成的建表语句将显示在这里..."></textarea>
+                </div>
             </div>
 
-            <div class="card">
-                <div class="header">
-                    <h3 class="card-title" id="outputTitle">Spark SQL 建表语句</h3>
-                    <button class="btn btn-copy" onclick="copyDDL()">复制</button>
-                </div>
-                <textarea id="ddlOutput" readonly placeholder="生成的建表语句将显示在这里..."></textarea>
+            <div class="card" style="text-align: center; color: #666;">
+                <p>支持解析 SELECT 查询语句中的字段，自动推断字段类型并生成建表 DDL</p>
+                <p style="margin-top: 10px;">支持7种数据库类型：Spark SQL、MySQL、PostgreSQL、StarRocks、ClickHouse、Hive、Doris</p>
             </div>
         </div>
 
-        <div class="card" style="text-align: center; color: #666;">
-            <p>支持解析 SELECT 查询语句中的字段，自动推断字段类型并生成建表 DDL</p>
-            <p style="margin-top: 10px;">支持7种数据库类型：Spark SQL、MySQL、PostgreSQL、StarRocks、ClickHouse、Hive、Doris</p>
+        <!-- 标签页2: 规则管理器 -->
+        <div class="tab-content" id="tab-rules">
+            <div class="card">
+                <div class="header">
+                    <h3 class="card-title">字段类型推断规则配置</h3>
+                    <span id="rulesDbCount" style="color: #666;"></span>
+                </div>
+                <p style="color: #666; margin-bottom: 15px;">为每种数据库类型配置自定义的字段类型推断规则，根据字段名或注释自动匹配目标类型。规则按优先级从小到大依次应用。</p>
+                <div id="mappingContainer"></div>
+            </div>
         </div>
     </div>
 
@@ -624,25 +646,50 @@ FROM credit_usage_detail"></textarea>
 
         let customRules = JSON.parse(JSON.stringify(DEFAULT_RULES));
 
+        // 标签页切换
+        function switchTab(tabName) {
+            // 隐藏所有标签内容
+            document.querySelectorAll('.tab-content').forEach(content => {
+                content.classList.remove('active');
+            });
+            // 移除所有标签激活状态
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            // 激活选中的标签
+            document.getElementById('tab-' + tabName).classList.add('active');
+            event.target.classList.add('active');
+
+            // 如果切换到规则页面，渲染规则
+            if (tabName === 'rules') {
+                renderMappings();
+            }
+        }
+
         document.getElementById('sqlInput').addEventListener('input', function() {
             document.getElementById('charCount').textContent = this.value.length + ' 字符';
         });
 
-        function toggleMapping(dbType) {
-            renderMappings();
-        }
+        // 监听数据库选择变化
+        document.getElementById('dbSelector').addEventListener('change', function() {
+            // 重新渲染规则（如果在规则页面）
+            if (document.getElementById('tab-rules').classList.contains('active')) {
+                renderMappings();
+            }
+        });
 
         function renderMappings() {
             const checkedDbs = Array.from(document.querySelectorAll('#dbSelector input:checked')).map(cb => cb.value);
-            const mappingCard = document.getElementById('mappingCard');
             const mappingContainer = document.getElementById('mappingContainer');
 
+            // 更新规则页面标题
+            document.getElementById('rulesDbCount').textContent = `已选择 ${checkedDbs.length} 个数据库类型`;
+
             if (checkedDbs.length === 0) {
-                mappingCard.style.display = 'none';
+                mappingContainer.innerHTML = '<p style="color: #999; text-align: center; padding: 20px;">请先在"DDL生成器"页面选择目标数据库类型</p>';
                 return;
             }
 
-            mappingCard.style.display = 'block';
             mappingContainer.innerHTML = '';
 
             checkedDbs.forEach(dbType => {
@@ -759,9 +806,6 @@ FROM credit_usage_detail"></textarea>
             return customRules;
         }
 
-        // 初始化映射区域
-        renderMappings();
-
         async function generateDDL() {
             const sql = document.getElementById('sqlInput').value.trim();
             const errorDiv = document.getElementById('error');
@@ -778,6 +822,12 @@ FROM credit_usage_detail"></textarea>
                 errorDiv.textContent = '请至少选择一个数据库类型';
                 errorDiv.style.display = 'block';
                 return;
+            }
+
+            // 提示用户可以使用规则管理器配置推断规则
+            const hasRules = Object.keys(customRules).some(dbType => dbTypes.includes(dbType));
+            if (!hasRules) {
+                console.log('提示：可以在"规则管理器"标签页中配置字段类型推断规则');
             }
 
             errorDiv.style.display = 'none';
