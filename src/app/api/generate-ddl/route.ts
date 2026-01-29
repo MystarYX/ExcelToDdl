@@ -148,7 +148,27 @@ function parseSelectClause(selectClause: string): FieldInfo[] {
       const comment = match[1].trim();
       const fieldPart = line.substring(0, match.index).trim();
       if (fieldPart) {
-        const normalizedKey = fieldPart.replace(/^,/, '').trim();
+        // 去除前导逗号和空格
+        let normalizedKey = fieldPart.replace(/^,/, '').trim();
+        
+        // 去除AS别名部分，只保留主字段表达式
+        const asMatch = normalizedKey.match(/^(.+?)\s+AS\s+[^\s,]+$/i);
+        if (asMatch) {
+          normalizedKey = asMatch[1].trim();
+        } else {
+          // 如果没有AS关键字，尝试去掉最后一部分（隐式别名）
+          const parts = normalizedKey.split(/\s+/);
+          if (parts.length > 1) {
+            const lastPart = parts[parts.length - 1];
+            const containsOperator = ['(', '+', '-', '*', '/', '='].some(op => 
+              normalizedKey.substring(0, normalizedKey.lastIndexOf(lastPart)).includes(op)
+            );
+            if (!containsOperator && !lastPart.includes('(') && !lastPart.includes(')')) {
+              normalizedKey = parts.slice(0, -1).join(' ');
+            }
+          }
+        }
+        
         commentMap[normalizedKey] = comment;
       }
     }
@@ -200,27 +220,36 @@ function parseFieldExpression(expr: string, commentMap?: Record<string, string>)
 
   expr = expr.replace(/\bDISTINCT\s+/gi, '');
 
+  // 处理显式AS别名
   const aliasMatch = expr.match(/\s+AS\s+([^\s,]+)$/i);
   if (aliasMatch) {
     const mainExpr = expr.substring(0, aliasMatch.index).trim();
     const alias = aliasMatch[1].trim().replace(/['"`]/g, '');
-    const name = mainExpr;
-    return { name, alias, comment: commentMap[name] || alias };
+    // 优先使用commentMap中的注释，如果没有注释则用别名
+    const comment = commentMap[mainExpr] || '';
+    return { name: mainExpr, alias, comment };
   }
 
+  // 处理隐式别名（无AS关键字的最后一部分）
   const parts = expr.split(/\s+/);
   if (parts.length > 1) {
     const lastPart = parts[parts.length - 1].trim().replace(/['"`]/g, '');
-    const containsOperator = ['(', '+', '-', '*', '/', '='].some(op => parts[parts.length - 2].includes(op));
-    if (!containsOperator) {
+    const containsOperator = ['(', '+', '-', '*', '/', '='].some(op => 
+      parts.slice(0, -1).join(' ').includes(op)
+    );
+    // 只有当不包含运算符，且最后一部分不是函数或复杂表达式时，才认为是别名
+    if (!containsOperator && !lastPart.includes('(') && !lastPart.includes(')')) {
       const name = parts.slice(0, -1).join(' ');
-      const alias = lastPart;
-      return { name, alias, comment: commentMap[name] || alias };
+      // 优先使用commentMap中的注释，如果没有注释则用别名
+      const comment = commentMap[name] || '';
+      return { name, alias: lastPart, comment };
     }
   }
 
   const name = expr;
-  return { name, alias: undefined, comment: commentMap[name] || name };
+  // 优先使用commentMap中的注释
+  const comment = commentMap[name] || '';
+  return { name, alias: undefined, comment };
 }
 
 interface TypeInfo {
