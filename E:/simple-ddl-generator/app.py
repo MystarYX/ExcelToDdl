@@ -660,7 +660,10 @@ FROM credit_usage_detail"></textarea>
             <div class="card">
                 <div class="header">
                     <h3 class="card-title">字段类型推断规则配置</h3>
-                    <span id="rulesDbCount" style="color: #666;"></span>
+                    <div style="display: flex; align-items: center; gap: 15px;">
+                        <span id="rulesDbCount" style="color: #666;"></span>
+                        <span id="saveStatus" style="color: #28a745; font-size: 13px; display: none;">✓ 已自动保存</span>
+                    </div>
                 </div>
                 <p style="color: #666; margin-bottom: 15px;">为每种数据库类型配置自定义的字段类型推断规则，根据字段名或注释自动匹配目标类型。规则按优先级从小到大依次应用。</p>
 
@@ -770,6 +773,15 @@ FROM credit_usage_detail"></textarea>
             try {
                 localStorage.setItem(STORAGE_KEY, JSON.stringify(customRules));
                 console.log('✓ 规则已保存到本地存储');
+
+                // 显示保存状态
+                const saveStatus = document.getElementById('saveStatus');
+                if (saveStatus) {
+                    saveStatus.style.display = 'inline';
+                    setTimeout(() => {
+                        saveStatus.style.display = 'none';
+                    }, 2000);
+                }
             } catch (e) {
                 console.error('✗ 保存规则失败:', e);
             }
@@ -856,7 +868,11 @@ FROM credit_usage_detail"></textarea>
         }
 
         // 页面加载时尝试恢复规则
-        loadRules();
+        if (loadRules()) {
+            console.log('✓ 已从本地存储恢复上次保存的规则配置');
+        } else {
+            console.log('✓ 使用默认规则配置');
+        }
 
         // ==================== 标签页切换 ====================
         function switchTab(tabName) {
@@ -974,18 +990,75 @@ FROM credit_usage_detail"></textarea>
                 section.innerHTML = rulesHtml;
                 mappingContainer.appendChild(section);
 
-                // 为所有输入框添加change事件监听器
-                const inputs = section.querySelectorAll('input, select');
-                inputs.forEach(input => {
-                    // 跳过已经有onchange属性的元素
-                    if (input.hasAttribute('onchange') || input.hasAttribute('onclick')) {
-                        return;
-                    }
-                    input.addEventListener('change', () => {
-                        saveRules();
+                // 为每个规则项中的输入框添加事件监听器
+                const ruleItems = section.querySelectorAll('.rule-item');
+                ruleItems.forEach(ruleItem => {
+                    const inputs = ruleItem.querySelectorAll('input, select');
+                    inputs.forEach(input => {
+                        // 跳过已经有onchange或onclick属性的元素
+                        if (input.hasAttribute('onchange') || input.hasAttribute('onclick')) {
+                            return;
+                        }
+
+                        const saveHandler = () => {
+                            // 先更新规则数据，再保存
+                            const dbType = ruleItem.closest('.mapping-section').querySelector('.rule-list').id.replace('rules_', '');
+                            updateRulesFromDOM(dbType);
+                            saveRules();
+                        };
+
+                        // change事件：值改变时触发
+                        input.addEventListener('change', saveHandler);
+                        // blur事件：失去焦点时也触发
+                        input.addEventListener('blur', saveHandler);
                     });
                 });
             });
+        }
+
+        // 从 DOM 更新规则数据到 customRules
+        function updateRulesFromDOM(dbType) {
+            const section = document.querySelector(`#rules_${dbType}`).closest('.mapping-section');
+            if (!section) return;
+
+            const ruleItems = section.querySelectorAll('.rule-item');
+            const updatedRules = [];
+
+            ruleItems.forEach(item => {
+                const index = parseInt(item.dataset.index);
+                const keywordInput = item.querySelector('[data-field="keywords"]');
+                const matchTypeSelect = item.querySelector('[data-field="matchType"]');
+                const targetFieldSelect = item.querySelector('[data-field="targetField"]');
+                const dataTypeSelect = item.querySelector('[data-field="dataType"]');
+                const priorityInput = item.querySelector('[data-field="priority"]');
+                const precisionInput = item.querySelector('[data-field="precision"]');
+                const scaleInput = item.querySelector('[data-field="scale"]');
+                const lengthInput = item.querySelector('[data-field="length"]');
+
+                const keywords = keywordInput.value.split(',').map(k => k.trim()).filter(k => k);
+                const rule = {
+                    keywords: keywords,
+                    matchType: matchTypeSelect.value,
+                    targetField: targetFieldSelect.value,
+                    dataType: dataTypeSelect.value,
+                    priority: parseInt(priorityInput.value) || 999
+                };
+
+                // 添加类型配置参数
+                if (precisionInput && precisionInput.value) {
+                    rule.precision = parseInt(precisionInput.value);
+                }
+                if (scaleInput && scaleInput.value) {
+                    rule.scale = parseInt(scaleInput.value);
+                }
+                if (lengthInput && lengthInput.value) {
+                    rule.length = parseInt(lengthInput.value);
+                }
+
+                updatedRules.push(rule);
+            });
+
+            customRules[dbType] = updatedRules;
         }
 
         // 判断类型是否需要配置
