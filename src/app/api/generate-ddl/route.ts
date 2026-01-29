@@ -512,14 +512,22 @@ function generateDDL(fields: FieldInfo[], customRules: Record<string, InferenceR
 
   ddlParts.push(')');
 
-  if (config.comment === 'INLINE') {
-    ddlParts.push("COMMENT '';");
-  } else if (config.comment === 'SEPARATE') {
-    ddlParts.push(";");
-    ddlParts.push("COMMENT ON TABLE 表名 IS '';");
-    adjustedFields.forEach(field => {
-      ddlParts.push(`COMMENT ON COLUMN 表名.${field.name} IS '${field.comment.replace(/'/g, "''")}';`);
-    });
+  // Spark 特定配置：表注释、分区、存储格式、生命周期
+  if (databaseType === 'spark') {
+    ddlParts.push("COMMENT ''");
+    ddlParts.push("PARTITIONED BY (pt STRING COMMENT '日分区')");
+    ddlParts.push("STORED AS ORC");
+    ddlParts.push("LIFECYCLE 10;");
+  } else {
+    if (config.comment === 'INLINE') {
+      ddlParts.push("COMMENT '';");
+    } else if (config.comment === 'SEPARATE') {
+      ddlParts.push(";");
+      ddlParts.push("COMMENT ON TABLE 表名 IS '';");
+      adjustedFields.forEach(field => {
+        ddlParts.push(`COMMENT ON COLUMN 表名.${field.name} IS '${field.comment.replace(/'/g, "''")}';`);
+      });
+    }
   }
 
   if (config.addEngine) {
