@@ -148,10 +148,10 @@ function parseSelectClause(selectClause: string): FieldInfo[] {
       const comment = match[1].trim();
       const fieldPart = line.substring(0, match.index).trim();
       if (fieldPart) {
-        // 去除前导逗号和空格
+        // 去除前导逗号
         let normalizedKey = fieldPart.replace(/^,/, '').trim();
         
-        // 去除AS别名部分，只保留主字段表达式
+        // 去除AS别名部分
         const asMatch = normalizedKey.match(/^(.+?)\s+AS\s+[^\s,]+$/i);
         if (asMatch) {
           normalizedKey = asMatch[1].trim();
@@ -168,6 +168,9 @@ function parseSelectClause(selectClause: string): FieldInfo[] {
             }
           }
         }
+        
+        // 规范化：移除多余空格，合并连续空格
+        normalizedKey = normalizedKey.replace(/\s+/g, ' ').trim();
         
         commentMap[normalizedKey] = comment;
       }
@@ -220,13 +223,16 @@ function parseFieldExpression(expr: string, commentMap?: Record<string, string>)
 
   expr = expr.replace(/\bDISTINCT\s+/gi, '');
 
+  // 规范化表达式用于注释查找
+  const normalizeExpr = (e: string) => e.replace(/\s+/g, ' ').trim();
+
   // 处理显式AS别名
   const aliasMatch = expr.match(/\s+AS\s+([^\s,]+)$/i);
   if (aliasMatch) {
     const mainExpr = expr.substring(0, aliasMatch.index).trim();
     const alias = aliasMatch[1].trim().replace(/['"`]/g, '');
-    // 优先使用commentMap中的注释，如果没有注释则用别名
-    const comment = commentMap[mainExpr] || '';
+    // 使用规范化后的表达式查找注释
+    const comment = commentMap[normalizeExpr(mainExpr)] || '';
     return { name: mainExpr, alias, comment };
   }
 
@@ -240,15 +246,15 @@ function parseFieldExpression(expr: string, commentMap?: Record<string, string>)
     // 只有当不包含运算符，且最后一部分不是函数或复杂表达式时，才认为是别名
     if (!containsOperator && !lastPart.includes('(') && !lastPart.includes(')')) {
       const name = parts.slice(0, -1).join(' ');
-      // 优先使用commentMap中的注释，如果没有注释则用别名
-      const comment = commentMap[name] || '';
+      // 使用规范化后的表达式查找注释
+      const comment = commentMap[normalizeExpr(name)] || '';
       return { name, alias: lastPart, comment };
     }
   }
 
   const name = expr;
-  // 优先使用commentMap中的注释
-  const comment = commentMap[name] || '';
+  // 使用规范化后的表达式查找注释
+  const comment = commentMap[normalizeExpr(name)] || '';
   return { name, alias: undefined, comment };
 }
 
