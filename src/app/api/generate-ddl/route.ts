@@ -27,7 +27,7 @@ const DATABASE_CONFIGS: Record<DatabaseType, {
 }> = {
   spark: { prefix: 'CREATE TABLE IF NOT EXISTS', comment: 'INLINE' },
   mysql: { prefix: 'CREATE TABLE ', comment: 'INLINE', addPk: true, addEngine: true },
-  starrocks: { prefix: 'CREATE TABLE IF NOT EXISTS', comment: 'INLINE' },
+  starrocks: { prefix: 'CREATE TABLE IF NOT EXISTS', comment: 'INLINE', addPk: true },
 };
 
 // 移除CTE (WITH子句)
@@ -658,18 +658,36 @@ function generateStarRocksDDL(adjustedFields: Array<{name: string, type: string,
   // 字段定义
   ddlParts.push(...generateFieldDefinitions(adjustedFields));
 
-  // PRIMARY KEY（StarRocks可以配置）
-  if (config.addPk) {
-    const pk = generatePrimaryKey(fields);
-    if (pk) ddlParts.push(pk);
-  }
-
   ddlParts.push(')');
 
-  // StarRocks INLINE 注释模式
-  if (config.comment === 'INLINE') {
-    ddlParts.push("COMMENT '';");
+  // ENGINE
+  ddlParts.push('ENGINE=OLAP');
+
+  // PRIMARY KEY 和 DISTRIBUTED BY HASH
+  if (config.addPk) {
+    const pkField = selectPrimaryKey(fields);
+    if (pkField) {
+      ddlParts.push(`PRIMARY KEY (${pkField})`);
+      ddlParts.push(`DISTRIBUTED BY HASH(${pkField}) BUCKETS 10`);
+    } else {
+      // 如果没有找到主键，使用第一个字段作为分片键
+      if (adjustedFields.length > 0) {
+        ddlParts.push(`DISTRIBUTED BY HASH(${adjustedFields[0].name}) BUCKETS 10`);
+      }
+    }
   }
+
+  // COMMENT
+  ddlParts.push("COMMENT ''");
+
+  // PROPERTIES
+  ddlParts.push('PROPERTIES (');
+  ddlParts.push('    "replication_num" = "3",');
+  ddlParts.push('    "in_memory" = "false",');
+  ddlParts.push('    "enable_persistent_index" = "true",');
+  ddlParts.push('    "replicated_storage" = "true",');
+  ddlParts.push('    "compression" = "LZ4"');
+  ddlParts.push(')');
 
   return ddlParts.join('\n');
 }
