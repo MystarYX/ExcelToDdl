@@ -17,7 +17,7 @@ interface InferenceRule {
   length?: number;
 }
 
-type DatabaseType = 'spark' | 'mysql' | 'postgresql' | 'starrocks' | 'clickhouse' | 'hive' | 'doris';
+type DatabaseType = 'spark' | 'mysql' | 'starrocks';
 
 const DATABASE_CONFIGS: Record<DatabaseType, {
   prefix: string;
@@ -27,11 +27,7 @@ const DATABASE_CONFIGS: Record<DatabaseType, {
 }> = {
   spark: { prefix: 'CREATE TABLE IF NOT EXISTS', comment: 'INLINE' },
   mysql: { prefix: 'CREATE TABLE ', comment: 'INLINE', addPk: true, addEngine: true },
-  postgresql: { prefix: 'CREATE TABLE', comment: 'SEPARATE' },
   starrocks: { prefix: 'CREATE TABLE IF NOT EXISTS', comment: 'INLINE' },
-  clickhouse: { prefix: 'CREATE TABLE IF NOT EXISTS', comment: 'INLINE' },
-  hive: { prefix: 'CREATE TABLE IF NOT EXISTS', comment: 'INLINE' },
-  doris: { prefix: 'CREATE TABLE IF NOT EXISTS', comment: 'INLINE' },
 };
 
 // 移除CTE (WITH子句)
@@ -529,69 +525,31 @@ function inferFieldType(fieldName: string, fieldComment: string, customRules?: I
 function mapDataType(typeInfo: TypeInfo | string, databaseType: DatabaseType): string {
   if (typeof typeInfo === 'string') {
     // 兼容旧版本
-    const data_type = typeInfo.toUpperCase();
-    if (databaseType === 'clickhouse') {
-      if (data_type === 'STRING') return 'String';
-      if (data_type === 'DATE') return 'Date';
-      if (data_type === 'TIMESTAMP') return 'DateTime';
-      if (data_type.startsWith('DECIMAL')) return data_type.replace('DECIMAL', 'Decimal');
-    }
-    if (databaseType === 'postgresql') {
-      if (data_type === 'STRING') return 'TEXT';
-      if (data_type === 'TIMESTAMP') return 'TIMESTAMP';
-    }
-    return data_type;
+    return typeInfo.toUpperCase();
   }
 
   // 新版本：处理类型对象
   const data_type = typeInfo.type.toUpperCase();
   const { precision, scale, length } = typeInfo;
 
-  if (databaseType === 'clickhouse') {
-    if (data_type === 'STRING') return 'String';
-    if (data_type === 'DATE') return 'Date';
-    if (data_type === 'TIMESTAMP') return 'DateTime';
-    if (data_type.startsWith('DECIMAL')) {
-      const base = data_type.replace('DECIMAL', 'Decimal');
-      if (precision && scale) return `${base}(${precision}, ${scale})`;
-      return base;
-    }
-    if (data_type.startsWith('FLOAT')) {
-      return precision ? `Float${precision}` : 'Float64';
-    }
-    if (data_type.startsWith('DOUBLE')) return 'Float64';
-    if (data_type === 'VARCHAR' || data_type === 'CHAR') return 'String';
-  } else if (databaseType === 'postgresql') {
-    if (data_type === 'STRING') return 'TEXT';
-    if (data_type === 'TIMESTAMP') return 'TIMESTAMP';
-    if (data_type.startsWith('DECIMAL')) {
-      return precision && scale ? `DECIMAL(${precision}, ${scale})` : 'DECIMAL';
-    }
-    if (data_type === 'VARCHAR' || data_type === 'CHAR') {
-      return length ? `${data_type}(${length})` : 'VARCHAR(255)';
-    }
-    if (data_type.startsWith('FLOAT')) return 'REAL';
-    if (data_type.startsWith('DOUBLE')) return 'DOUBLE PRECISION';
-  } else {
-    // MySQL, Spark, StarRocks, Hive, Doris
-    if (data_type === 'STRING') {
-      return ['spark', 'hive'].includes(databaseType) ? 'STRING' : 'VARCHAR(255)';
-    }
-    if (data_type.startsWith('DECIMAL')) {
-      return precision && scale ? `DECIMAL(${precision}, ${scale})` : 'DECIMAL(24, 6)';
-    }
-    if (data_type === 'TIMESTAMP') {
-      return ['mysql', 'starrocks', 'doris'].includes(databaseType) ? 'DATETIME' : 'TIMESTAMP';
-    }
-    if (data_type === 'VARCHAR' || data_type === 'CHAR') {
-      return length ? `${data_type}(${length})` : 'VARCHAR(255)';
-    }
-    if (data_type.startsWith('FLOAT')) {
-      return precision ? `FLOAT(${precision})` : 'FLOAT';
-    }
-    if (data_type.startsWith('DOUBLE')) {
-      return precision ? `DOUBLE(${precision})` : 'DOUBLE';
-    }
+  // MySQL, Spark, StarRocks
+  if (data_type === 'STRING') {
+    return databaseType === 'spark' ? 'STRING' : 'VARCHAR(255)';
+  }
+  if (data_type.startsWith('DECIMAL')) {
+    return precision && scale ? `DECIMAL(${precision}, ${scale})` : 'DECIMAL(24, 6)';
+  }
+  if (data_type === 'TIMESTAMP') {
+    return databaseType === 'spark' ? 'TIMESTAMP' : 'DATETIME';
+  }
+  if (data_type === 'VARCHAR' || data_type === 'CHAR') {
+    return length ? `${data_type}(${length})` : 'VARCHAR(255)';
+  }
+  if (data_type.startsWith('FLOAT')) {
+    return precision ? `FLOAT(${precision})` : 'FLOAT';
+  }
+  if (data_type.startsWith('DOUBLE')) {
+    return precision ? `DOUBLE(${precision})` : 'DOUBLE';
   }
 
   return data_type;
@@ -693,27 +651,6 @@ function generateMySQLDDL(adjustedFields: Array<{name: string, type: string, com
   return ddlParts.join('\n');
 }
 
-function generatePostgreSQLDDL(adjustedFields: Array<{name: string, type: string, comment: string}>, fields: FieldInfo[]): string {
-  const config = DATABASE_CONFIGS['postgresql'];
-  const ddlParts: string[] = [`${config.prefix} 表名 (`];
-
-  // 字段定义
-  ddlParts.push(...generateFieldDefinitions(adjustedFields));
-
-  ddlParts.push(')');
-
-  // PostgreSQL SEPARATE 注释模式
-  if (config.comment === 'SEPARATE') {
-    ddlParts.push(";");
-    ddlParts.push("COMMENT ON TABLE 表名 IS '';");
-    adjustedFields.forEach(field => {
-      ddlParts.push(`COMMENT ON COLUMN 表名.${field.name} IS '${field.comment.replace(/'/g, "''")}';`);
-    });
-  }
-
-  return ddlParts.join('\n');
-}
-
 function generateStarRocksDDL(adjustedFields: Array<{name: string, type: string, comment: string}>, fields: FieldInfo[]): string {
   const config = DATABASE_CONFIGS['starrocks'];
   const ddlParts: string[] = [`${config.prefix} 表名 (`];
@@ -730,63 +667,6 @@ function generateStarRocksDDL(adjustedFields: Array<{name: string, type: string,
   ddlParts.push(')');
 
   // StarRocks INLINE 注释模式
-  if (config.comment === 'INLINE') {
-    ddlParts.push("COMMENT '';");
-  }
-
-  return ddlParts.join('\n');
-}
-
-function generateClickHouseDDL(adjustedFields: Array<{name: string, type: string, comment: string}>, fields: FieldInfo[]): string {
-  const config = DATABASE_CONFIGS['clickhouse'];
-  const ddlParts: string[] = [`${config.prefix} 表名 (`];
-
-  // 字段定义
-  ddlParts.push(...generateFieldDefinitions(adjustedFields));
-
-  ddlParts.push(')');
-
-  // ClickHouse INLINE 注释模式
-  if (config.comment === 'INLINE') {
-    ddlParts.push("COMMENT '';");
-  }
-
-  return ddlParts.join('\n');
-}
-
-function generateHiveDDL(adjustedFields: Array<{name: string, type: string, comment: string}>, fields: FieldInfo[]): string {
-  const config = DATABASE_CONFIGS['hive'];
-  const ddlParts: string[] = [`${config.prefix} 表名 (`];
-
-  // 字段定义
-  ddlParts.push(...generateFieldDefinitions(adjustedFields));
-
-  ddlParts.push(')');
-
-  // Hive INLINE 注释模式
-  if (config.comment === 'INLINE') {
-    ddlParts.push("COMMENT '';");
-  }
-
-  return ddlParts.join('\n');
-}
-
-function generateDorisDDL(adjustedFields: Array<{name: string, type: string, comment: string}>, fields: FieldInfo[]): string {
-  const config = DATABASE_CONFIGS['doris'];
-  const ddlParts: string[] = [`${config.prefix} 表名 (`];
-
-  // 字段定义
-  ddlParts.push(...generateFieldDefinitions(adjustedFields));
-
-  // PRIMARY KEY（Doris可以配置）
-  if (config.addPk) {
-    const pk = generatePrimaryKey(fields);
-    if (pk) ddlParts.push(pk);
-  }
-
-  ddlParts.push(')');
-
-  // Doris INLINE 注释模式
   if (config.comment === 'INLINE') {
     ddlParts.push("COMMENT '';");
   }
@@ -820,18 +700,10 @@ function generateDDL(fields: FieldInfo[], customRules: Record<string, InferenceR
       return generateSparkDDL(adjustedFields, fields);
     case 'mysql':
       return generateMySQLDDL(adjustedFields, fields);
-    case 'postgresql':
-      return generatePostgreSQLDDL(adjustedFields, fields);
     case 'starrocks':
       return generateStarRocksDDL(adjustedFields, fields);
-    case 'clickhouse':
-      return generateClickHouseDDL(adjustedFields, fields);
-    case 'hive':
-      return generateHiveDDL(adjustedFields, fields);
-    case 'doris':
-      return generateDorisDDL(adjustedFields, fields);
     default:
-      return generateMySQLDDL(adjustedFields, fields); // 默认使用MySQL
+      return generateSparkDDL(adjustedFields, fields); // 默认使用Spark
   }
 }
 
