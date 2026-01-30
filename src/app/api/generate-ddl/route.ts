@@ -73,7 +73,7 @@ function tryParseSelectFrom(sql: string): FieldInfo[] {
       parenCount++;
     } else if (char === ')') {
       parenCount--;
-    } else if (parenCount === 0 && sql.substr(i, 4).toUpperCase() === 'FROM') {
+    } else if (parenCount === 0 && sql.substring(i, i + 4).toUpperCase() === 'FROM') {
       // 检查FROM前面是否有字符，确保是独立的FROM关键字
       const prevChar = i === 0 ? ' ' : sql[i - 1];
       
@@ -137,34 +137,25 @@ function tryParseSelectFields(sql: string): FieldInfo[] {
   return parseSelectClause(selectClause);
 }
 
-function tryParseFieldList(sql: string): FieldInfo[] {
-  // 去除注释（保留注释后面的逗号）
-  const cleanSQL = sql.replace(/--.*?(,)?$/gm, '$1').replace(/\/\*[\s\S]*?\*\//g, '').trim();
-  
-  // 提取注释到映射表（去除注释末尾的逗号）
+function extractCommentMap(lines: string[]): Record<string, string> {
   const commentMap: Record<string, string> = {};
-  const lines = sql.split('\n');
-  
+
   for (const line of lines) {
     const match = line.match(/--\s*(.+?)(,)?$/);
     if (match) {
-      // 去除注释末尾的逗号
       const comment = match[1].trim();
       const fieldPart = line.substring(0, match.index).trim();
       if (fieldPart) {
-        // 去除前导逗号
         let normalizedKey = fieldPart.replace(/^,/, '').trim();
-        
-        // 去除AS别名部分
+
         const asMatch = normalizedKey.match(/^(.+?)\s+AS\s+[^\s,]+$/i);
         if (asMatch) {
           normalizedKey = asMatch[1].trim();
         } else {
-          // 如果没有AS关键字，尝试去掉最后一部分（隐式别名）
           const parts = normalizedKey.split(/\s+/);
           if (parts.length > 1) {
             const lastPart = parts[parts.length - 1];
-            const containsOperator = ['(', '+', '-', '*', '/', '='].some(op => 
+            const containsOperator = ['(', '+', '-', '*', '/', '='].some(op =>
               normalizedKey.substring(0, normalizedKey.lastIndexOf(lastPart)).includes(op)
             );
             if (!containsOperator && !lastPart.includes('(') && !lastPart.includes(')')) {
@@ -172,16 +163,20 @@ function tryParseFieldList(sql: string): FieldInfo[] {
             }
           }
         }
-        
-        // 规范化：移除多余空格，合并连续空格
+
         normalizedKey = normalizedKey.replace(/\s+/g, ' ').trim();
-        
         commentMap[normalizedKey] = comment;
       }
     }
   }
 
-  // 使用splitFields函数分割字段
+  return commentMap;
+}
+
+function tryParseFieldList(sql: string): FieldInfo[] {
+  const cleanSQL = sql.replace(/--.*?(,)?$/gm, '$1').replace(/\/\*[\s\S]*?\*\//g, '').trim();
+
+  const commentMap = extractCommentMap(sql.split('\n'));
   const fieldExpressions = splitFields(cleanSQL);
 
   return fieldExpressions
@@ -190,45 +185,7 @@ function tryParseFieldList(sql: string): FieldInfo[] {
 }
 
 function parseSelectClause(selectClause: string): FieldInfo[] {
-  const commentMap: Record<string, string> = {};
-  const lines = selectClause.split('\n');
-
-  for (const line of lines) {
-    const match = line.match(/--\s*(.+?)(,)?$/);
-    if (match) {
-      // 去除注释末尾的逗号
-      const comment = match[1].trim();
-      const fieldPart = line.substring(0, match.index).trim();
-      if (fieldPart) {
-        // 去除前导逗号
-        let normalizedKey = fieldPart.replace(/^,/, '').trim();
-        
-        // 去除AS别名部分
-        const asMatch = normalizedKey.match(/^(.+?)\s+AS\s+[^\s,]+$/i);
-        if (asMatch) {
-          normalizedKey = asMatch[1].trim();
-        } else {
-          // 如果没有AS关键字，尝试去掉最后一部分（隐式别名）
-          const parts = normalizedKey.split(/\s+/);
-          if (parts.length > 1) {
-            const lastPart = parts[parts.length - 1];
-            const containsOperator = ['(', '+', '-', '*', '/', '='].some(op => 
-              normalizedKey.substring(0, normalizedKey.lastIndexOf(lastPart)).includes(op)
-            );
-            if (!containsOperator && !lastPart.includes('(') && !lastPart.includes(')')) {
-              normalizedKey = parts.slice(0, -1).join(' ');
-            }
-          }
-        }
-        
-        // 规范化：移除多余空格，合并连续空格
-        normalizedKey = normalizedKey.replace(/\s+/g, ' ').trim();
-        
-        commentMap[normalizedKey] = comment;
-      }
-    }
-  }
-
+  const commentMap = extractCommentMap(selectClause.split('\n'));
   const cleanClause = selectClause.replace(/--.*?(,)?$/gm, '$1').replace(/\/\*[\s\S]*?\*\//g, '');
   const fieldExpressions = splitFields(cleanClause);
 
@@ -248,9 +205,9 @@ function splitFields(selectClause: string): string[] {
     const char = selectClause[i];
 
     // 检查是否是 CASE 关键字（必须在单词边界上）
-    if (parenCount === 0 && caseCount === 0 && 
-        char.toUpperCase() === 'C' && 
-        selectClause.substr(i, 4).toUpperCase() === 'CASE') {
+    if (parenCount === 0 && caseCount === 0 &&
+        char.toUpperCase() === 'C' &&
+        selectClause.substring(i, i + 4).toUpperCase() === 'CASE') {
       // 检查前后是否为单词边界
       const prevChar = i === 0 ? ' ' : selectClause[i - 1];
       const nextChar = i + 4 >= selectClause.length ? ' ' : selectClause[i + 4];
@@ -261,8 +218,8 @@ function splitFields(selectClause: string): string[] {
       current += char;
     } 
     // 检查是否是 END 关键字
-    else if (caseCount > 0 && char.toUpperCase() === 'E' && 
-             selectClause.substr(i, 3).toUpperCase() === 'END') {
+    else if (caseCount > 0 && char.toUpperCase() === 'E' &&
+             selectClause.substring(i, i + 3).toUpperCase() === 'END') {
       const prevChar = i === 0 ? ' ' : selectClause[i - 1];
       const nextChar = i + 3 >= selectClause.length ? ' ' : selectClause[i + 3];
       
@@ -504,18 +461,20 @@ function selectPrimaryKey(fields: FieldInfo[]): string | null {
   if (fields.length === 0) return null;
 
   for (const field of fields) {
-    if (field.name.toLowerCase().endsWith('icode')) {
-      return field.name;
+    const fieldName = (field.alias || field.name).toLowerCase();
+    if (fieldName.endsWith('icode')) {
+      return fieldName;
     }
   }
 
   for (const field of fields) {
-    if (field.name.toLowerCase().endsWith('id') && !field.name.toLowerCase().endsWith('icode')) {
-      return field.name;
+    const fieldName = (field.alias || field.name).toLowerCase();
+    if (fieldName.endsWith('id') && !fieldName.endsWith('icode')) {
+      return fieldName;
     }
   }
 
-  return fields[0].name;
+  return fields[0].alias || fields[0].name;
 }
 
 function generateDDL(fields: FieldInfo[], customRules: Record<string, InferenceRule[]>, databaseType: DatabaseType): string {
