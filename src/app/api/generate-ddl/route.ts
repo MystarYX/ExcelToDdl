@@ -598,17 +598,20 @@ function mapDataType(typeInfo: TypeInfo | string, databaseType: DatabaseType): s
 function selectPrimaryKey(fields: FieldInfo[]): string | null {
   if (fields.length === 0) return null;
 
+  // 优先使用原始字段名判断，但返回别名（如果存在）
   for (const field of fields) {
-    const fieldName = (field.alias || field.name).toLowerCase();
-    if (fieldName.endsWith('icode')) {
-      return fieldName;
+    const originalName = field.name.toLowerCase();
+    const displayName = field.alias || field.name;
+    if (originalName.endsWith('icode')) {
+      return displayName;
     }
   }
 
   for (const field of fields) {
-    const fieldName = (field.alias || field.name).toLowerCase();
-    if (fieldName.endsWith('id') && !fieldName.endsWith('icode')) {
-      return fieldName;
+    const originalName = field.name.toLowerCase();
+    const displayName = field.alias || field.name;
+    if (originalName.endsWith('id') && !originalName.endsWith('icode')) {
+      return displayName;
     }
   }
 

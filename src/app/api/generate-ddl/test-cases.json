@@ -1,0 +1,138 @@
+{
+  "test_cases": [
+    {
+      "name": "基础测试 - 简单SELECT语句",
+      "description": "测试基本的字段解析和类型推断",
+      "input": {
+        "sql": "SELECT user_id AS id, -- 用户ID\n  user_name AS name, -- 用户名称\n  order_amount AS amount, -- 订单金额\n  order_date AS create_date, -- 订单日期\n  order_time AS create_time, -- 订单时间\n  order_status AS status -- 订单状态\nFROM orders",
+        "databaseTypes": ["spark", "mysql"]
+      },
+      "expected": {
+        "spark": {
+          "prefix": "CREATE TABLE IF NOT EXISTS",
+          "fields": ["id", "name", "amount", "create_date", "create_time", "status"],
+          "types": ["STRING", "STRING", "DECIMAL(24, 6)", "DATE", "TIMESTAMP", "STRING"],
+          "comments": ["用户ID", "用户名称", "订单金额", "订单日期", "订单时间", "订单状态"],
+          "suffix": "PARTITIONED BY (pt STRING COMMENT '日分区') STORED AS ORC LIFECYCLE 10;"
+        },
+        "mysql": {
+          "prefix": "CREATE TABLE ",
+          "fields": ["id", "name", "amount", "create_date", "create_time", "status"],
+          "types": ["VARCHAR(255)", "VARCHAR(255)", "DECIMAL(24, 6)", "DATE", "DATETIME", "VARCHAR(255)"],
+          "comments": ["用户ID", "用户名称", "订单金额", "订单日期", "订单时间", "订单状态"],
+          "primaryKey": "id",
+          "suffix": "ENGINE=InnoDB ROW_FORMAT=DYNAMIC COMMENT=''"
+        }
+      }
+    },
+    {
+      "name": "CASE WHEN测试 - 多行条件表达式",
+      "description": "测试CASE WHEN语句的字段解析和别名识别",
+      "input": {
+        "sql": "SELECT user_id,\n  CASE \n    WHEN age > 18 THEN 'adult'\n    ELSE 'minor'\n  END AS age_group, -- 年龄分组\n  order_amount AS amount, -- 订单金额\n  CASE WHEN amount > 1000 THEN 'high' ELSE 'low' END AS level -- 消费等级\nFROM users",
+        "databaseTypes": ["spark"]
+      },
+      "expected": {
+        "spark": {
+          "fields": ["user_id", "age_group", "amount", "level"],
+          "comments": ["", "年龄分组", "订单金额", "消费等级"]
+        }
+      }
+    },
+    {
+      "name": "CTE测试 - WITH子句",
+      "description": "测试WITH子句的移除和主SELECT解析",
+      "input": {
+        "sql": "WITH user_stats AS (\n  SELECT user_id, COUNT(*) AS order_count\n  FROM orders\n  GROUP BY user_id\n)\nSELECT \n  u.user_id AS id, -- 用户ID\n  u.user_name AS name, -- 用户名称\n  s.order_count AS count -- 订单数量\nFROM users u\nJOIN user_stats s ON u.user_id = s.user_id",
+        "databaseTypes": ["spark", "postgresql"]
+      },
+      "expected": {
+        "spark": {
+          "fields": ["id", "name", "count"],
+          "comments": ["用户ID", "用户名称", "订单数量"]
+        },
+        "postgresql": {
+          "fields": ["id", "name", "count"],
+          "comments": ["用户ID", "用户名称", "订单数量"],
+          "separateComments": true
+        }
+      }
+    },
+    {
+      "name": "多CTE测试 - 逗号分隔的多个WITH子句",
+      "description": "测试多个CTE（逗号分隔）的解析",
+      "input": {
+        "sql": "WITH \n  user_orders AS (\n    SELECT user_id, COUNT(*) AS order_count\n    FROM orders\n    GROUP BY user_id\n  ),\n  user_amounts AS (\n    SELECT user_id, SUM(amount) AS total_amount\n    FROM orders\n    GROUP BY user_id\n  )\nSELECT \n  u.user_id AS id, -- 用户ID\n  o.order_count AS order_cnt, -- 订单数\n  a.total_amount AS total_amt -- 总金额\nFROM users u\nJOIN user_orders o ON u.user_id = o.user_id\nJOIN user_amounts a ON u.user_id = a.user_id",
+        "databaseTypes": ["mysql", "clickhouse"]
+      },
+      "expected": {
+        "mysql": {
+          "fields": ["id", "order_cnt", "total_amt"],
+          "comments": ["用户ID", "订单数", "总金额"],
+          "primaryKey": "id"
+        },
+        "clickhouse": {
+          "fields": ["id", "order_cnt", "total_amt"],
+          "comments": ["用户ID", "订单数", "总金额"]
+        }
+      }
+    },
+    {
+      "name": "复杂注释测试 - 带引号、特殊字符的注释",
+      "description": "测试注释中的引号去除和特殊字符处理",
+      "input": {
+        "sql": "SELECT user_icode AS code, -- \"用户\"编码\n  user_name AS name, -- 用户名称 'test'\n  order_amt AS amount, -- 订单数量 (单位: 元)\n  order_qty AS qty, -- 商品数量\n  order_flag AS is_valid, -- 是否有效: 1-是 0-否\n  fcy_amt AS fcy_amount, -- 原币金额\n  scy_amt AS scy_amount, -- 本币金额\n  trade_date AS trans_date, -- 交易日期\n  create_time AS timestamp -- 创建时间\nFROM trade_records",
+        "databaseTypes": ["spark", "mysql", "postgresql"]
+      },
+      "expected": {
+        "spark": {
+          "fields": ["code", "name", "amount", "qty", "is_valid", "fcy_amount", "scy_amount", "trans_date", "timestamp"],
+          "comments": [
+            "用户编码",
+            "用户名称 test",
+            "订单数量 (单位: 元)",
+            "商品数量",
+            "是否有效: 1-是 0-否",
+            "原币金额",
+            "本币金额",
+            "交易日期",
+            "创建时间"
+          ],
+          "types": ["STRING", "STRING", "DECIMAL(24, 6)", "DECIMAL(24, 6)", "STRING", "DECIMAL(24, 6)", "DECIMAL(24, 6)", "DATE", "TIMESTAMP"]
+        },
+        "mysql": {
+          "fields": ["code", "name", "amount", "qty", "is_valid", "fcy_amount", "scy_amount", "trans_date", "timestamp"],
+          "comments": [
+            "用户编码",
+            "用户名称 test",
+            "订单数量 (单位: 元)",
+            "商品数量",
+            "是否有效: 1-是 0-否",
+            "原币金额",
+            "本币金额",
+            "交易日期",
+            "创建时间"
+          ],
+          "types": ["VARCHAR(255)", "VARCHAR(255)", "DECIMAL(24, 6)", "DECIMAL(24, 6)", "VARCHAR(255)", "DECIMAL(24, 6)", "DECIMAL(24, 6)", "DATE", "DATETIME"],
+          "primaryKey": "code"
+        },
+        "postgresql": {
+          "fields": ["code", "name", "amount", "qty", "is_valid", "fcy_amount", "scy_amount", "trans_date", "timestamp"],
+          "comments": [
+            "用户编码",
+            "用户名称 test",
+            "订单数量 (单位: 元)",
+            "商品数量",
+            "是否有效: 1-是 0-否",
+            "原币金额",
+            "本币金额",
+            "交易日期",
+            "创建时间"
+          ],
+          "types": ["TEXT", "TEXT", "DECIMAL(24, 6)", "DECIMAL(24, 6)", "TEXT", "DECIMAL(24, 6)", "DECIMAL(24, 6)", "DATE", "TIMESTAMP"],
+          "separateComments": true
+        }
+      }
+    }
+  ]
+}
