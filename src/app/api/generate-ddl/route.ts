@@ -671,7 +671,7 @@ function mapDataType(typeInfo: TypeInfo | string, databaseType: DatabaseType): s
     return databaseType === 'spark' ? 'STRING' : 'VARCHAR(255)';
   }
   if (data_type.startsWith('DECIMAL')) {
-    return precision && scale ? `DECIMAL(${precision}, ${scale})` : 'DECIMAL(24, 6)';
+    return precision && scale ? `DECIMAL(${precision},${scale})` : 'DECIMAL(24,6)';
   }
   if (data_type === 'TIMESTAMP') {
     return databaseType === 'spark' ? 'TIMESTAMP' : 'DATETIME';
