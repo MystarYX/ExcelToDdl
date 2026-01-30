@@ -612,26 +612,13 @@ function selectPrimaryKey(fields: FieldInfo[]): string | null {
   return fields[0].alias || fields[0].name;
 }
 
-function generateDDL(fields: FieldInfo[], customRules: Record<string, InferenceRule[]>, databaseType: DatabaseType): string {
-  const config = DATABASE_CONFIGS[databaseType];
-  const dbRules = customRules[databaseType] || [];
+// ==================== 公共辅助函数 ====================
 
-  const adjustedFields = fields.map(field => {
-    // 优先使用别名作为字段名
-    const fieldName = field.alias || field.name;
-    const typeInfo = inferFieldType(fieldName, field.comment, dbRules);
-    const mappedType = mapDataType(typeInfo, databaseType);
-    return {
-      name: fieldName,
-      type: mappedType,
-      comment: field.comment
-    };
-  });
-
+// 生成字段定义部分（公共逻辑）
+function generateFieldDefinitions(adjustedFields: Array<{name: string, type: string, comment: string}>): string[] {
   const maxName = Math.max(...adjustedFields.map(f => f.name.length), 30);
   const maxType = 18;
-
-  const ddlParts: string[] = [`${config.prefix} 表名 (`];
+  const ddlParts: string[] = [];
 
   adjustedFields.forEach((field, idx) => {
     const paddedName = field.name.padEnd(maxName);
@@ -645,37 +632,194 @@ function generateDDL(fields: FieldInfo[], customRules: Record<string, InferenceR
     }
   });
 
-  if (config.addPk) {
-    const pk = selectPrimaryKey(fields);
-    if (pk) {
-      ddlParts.push(`   ,PRIMARY KEY (${pk})`);
-    }
+  return ddlParts;
+}
+
+// 生成 PRIMARY KEY 部分（公共逻辑）
+function generatePrimaryKey(fields: FieldInfo[]): string | null {
+  const pk = selectPrimaryKey(fields);
+  if (pk) {
+    return `   ,PRIMARY KEY (${pk})`;
   }
+  return null;
+}
+
+// ==================== 数据库类型DDL生成函数 ====================
+
+function generateSparkDDL(adjustedFields: Array<{name: string, type: string, comment: string}>, fields: FieldInfo[]): string {
+  const config = DATABASE_CONFIGS['spark'];
+  const ddlParts: string[] = [`${config.prefix} 表名 (`];
+
+  // 字段定义
+  ddlParts.push(...generateFieldDefinitions(adjustedFields));
 
   ddlParts.push(')');
 
   // Spark 特定配置：表注释、分区、存储格式、生命周期
-  if (databaseType === 'spark') {
-    ddlParts.push("COMMENT ''");
-    ddlParts.push("PARTITIONED BY (pt STRING COMMENT '日分区')");
-    ddlParts.push("STORED AS ORC");
-    ddlParts.push("LIFECYCLE 10;");
-  } else if (databaseType === 'mysql') {
-    // MySQL 特定配置：ENGINE、ROW_FORMAT、COMMENT
-    ddlParts.push('ENGINE=InnoDB ROW_FORMAT=DYNAMIC COMMENT=\'\'');
-  } else {
-    if (config.comment === 'INLINE') {
-      ddlParts.push("COMMENT '';");
-    } else if (config.comment === 'SEPARATE') {
-      ddlParts.push(";");
-      ddlParts.push("COMMENT ON TABLE 表名 IS '';");
-      adjustedFields.forEach(field => {
-        ddlParts.push(`COMMENT ON COLUMN 表名.${field.name} IS '${field.comment.replace(/'/g, "''")}';`);
-      });
-    }
+  ddlParts.push("COMMENT ''");
+  ddlParts.push("PARTITIONED BY (pt STRING COMMENT '日分区')");
+  ddlParts.push("STORED AS ORC");
+  ddlParts.push("LIFECYCLE 10;");
+
+  return ddlParts.join('\n');
+}
+
+function generateMySQLDDL(adjustedFields: Array<{name: string, type: string, comment: string}>, fields: FieldInfo[]): string {
+  const config = DATABASE_CONFIGS['mysql'];
+  const ddlParts: string[] = [`${config.prefix} 表名 (`];
+
+  // 字段定义
+  ddlParts.push(...generateFieldDefinitions(adjustedFields));
+
+  // PRIMARY KEY
+  if (config.addPk) {
+    const pk = generatePrimaryKey(fields);
+    if (pk) ddlParts.push(pk);
+  }
+
+  ddlParts.push(')');
+
+  // MySQL 特定配置：ENGINE、ROW_FORMAT、COMMENT
+  ddlParts.push('ENGINE=InnoDB ROW_FORMAT=DYNAMIC COMMENT=\'\'');
+
+  return ddlParts.join('\n');
+}
+
+function generatePostgreSQLDDL(adjustedFields: Array<{name: string, type: string, comment: string}>, fields: FieldInfo[]): string {
+  const config = DATABASE_CONFIGS['postgresql'];
+  const ddlParts: string[] = [`${config.prefix} 表名 (`];
+
+  // 字段定义
+  ddlParts.push(...generateFieldDefinitions(adjustedFields));
+
+  ddlParts.push(')');
+
+  // PostgreSQL SEPARATE 注释模式
+  if (config.comment === 'SEPARATE') {
+    ddlParts.push(";");
+    ddlParts.push("COMMENT ON TABLE 表名 IS '';");
+    adjustedFields.forEach(field => {
+      ddlParts.push(`COMMENT ON COLUMN 表名.${field.name} IS '${field.comment.replace(/'/g, "''")}';`);
+    });
   }
 
   return ddlParts.join('\n');
+}
+
+function generateStarRocksDDL(adjustedFields: Array<{name: string, type: string, comment: string}>, fields: FieldInfo[]): string {
+  const config = DATABASE_CONFIGS['starrocks'];
+  const ddlParts: string[] = [`${config.prefix} 表名 (`];
+
+  // 字段定义
+  ddlParts.push(...generateFieldDefinitions(adjustedFields));
+
+  // PRIMARY KEY（StarRocks可以配置）
+  if (config.addPk) {
+    const pk = generatePrimaryKey(fields);
+    if (pk) ddlParts.push(pk);
+  }
+
+  ddlParts.push(')');
+
+  // StarRocks INLINE 注释模式
+  if (config.comment === 'INLINE') {
+    ddlParts.push("COMMENT '';");
+  }
+
+  return ddlParts.join('\n');
+}
+
+function generateClickHouseDDL(adjustedFields: Array<{name: string, type: string, comment: string}>, fields: FieldInfo[]): string {
+  const config = DATABASE_CONFIGS['clickhouse'];
+  const ddlParts: string[] = [`${config.prefix} 表名 (`];
+
+  // 字段定义
+  ddlParts.push(...generateFieldDefinitions(adjustedFields));
+
+  ddlParts.push(')');
+
+  // ClickHouse INLINE 注释模式
+  if (config.comment === 'INLINE') {
+    ddlParts.push("COMMENT '';");
+  }
+
+  return ddlParts.join('\n');
+}
+
+function generateHiveDDL(adjustedFields: Array<{name: string, type: string, comment: string}>, fields: FieldInfo[]): string {
+  const config = DATABASE_CONFIGS['hive'];
+  const ddlParts: string[] = [`${config.prefix} 表名 (`];
+
+  // 字段定义
+  ddlParts.push(...generateFieldDefinitions(adjustedFields));
+
+  ddlParts.push(')');
+
+  // Hive INLINE 注释模式
+  if (config.comment === 'INLINE') {
+    ddlParts.push("COMMENT '';");
+  }
+
+  return ddlParts.join('\n');
+}
+
+function generateDorisDDL(adjustedFields: Array<{name: string, type: string, comment: string}>, fields: FieldInfo[]): string {
+  const config = DATABASE_CONFIGS['doris'];
+  const ddlParts: string[] = [`${config.prefix} 表名 (`];
+
+  // 字段定义
+  ddlParts.push(...generateFieldDefinitions(adjustedFields));
+
+  // PRIMARY KEY（Doris可以配置）
+  if (config.addPk) {
+    const pk = generatePrimaryKey(fields);
+    if (pk) ddlParts.push(pk);
+  }
+
+  ddlParts.push(')');
+
+  // Doris INLINE 注释模式
+  if (config.comment === 'INLINE') {
+    ddlParts.push("COMMENT '';");
+  }
+
+  return ddlParts.join('\n');
+}
+
+function generateDDL(fields: FieldInfo[], customRules: Record<string, InferenceRule[]>, databaseType: DatabaseType): string {
+  const dbRules = customRules[databaseType] || [];
+
+  // 调整字段：优先使用别名作为字段名
+  const adjustedFields = fields.map(field => {
+    const fieldName = field.alias || field.name;
+    const typeInfo = inferFieldType(fieldName, field.comment, dbRules);
+    const mappedType = mapDataType(typeInfo, databaseType);
+    return {
+      name: fieldName,
+      type: mappedType,
+      comment: field.comment
+    };
+  });
+
+  // 根据数据库类型调用对应的生成函数
+  switch (databaseType) {
+    case 'spark':
+      return generateSparkDDL(adjustedFields, fields);
+    case 'mysql':
+      return generateMySQLDDL(adjustedFields, fields);
+    case 'postgresql':
+      return generatePostgreSQLDDL(adjustedFields, fields);
+    case 'starrocks':
+      return generateStarRocksDDL(adjustedFields, fields);
+    case 'clickhouse':
+      return generateClickHouseDDL(adjustedFields, fields);
+    case 'hive':
+      return generateHiveDDL(adjustedFields, fields);
+    case 'doris':
+      return generateDorisDDL(adjustedFields, fields);
+    default:
+      return generateMySQLDDL(adjustedFields, fields); // 默认使用MySQL
+  }
 }
 
 function generateMultipleDDLs(fields: FieldInfo[], customRules: Record<string, InferenceRule[]>, databaseTypes: DatabaseType[]) {
