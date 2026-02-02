@@ -50,18 +50,74 @@ export default function ExcelTab() {
   
   // 规则管理器的规则
   const [globalRules, setGlobalRules] = useState<GlobalRule[]>([]);
+  
+  // 触发重新生成的标记
+  const [refreshDWD, setRefreshDWD] = useState(0);
+  const [refreshInsert, setRefreshInsert] = useState(0);
 
   // 页面加载时从 localStorage 恢复规则
   useEffect(() => {
-    const saved = localStorage.getItem('ddl_generator_global_rules');
-    if (saved) {
-      try {
-        setGlobalRules(JSON.parse(saved));
-      } catch (e) {
-        console.error('Failed to load rules:', e);
+    const loadRules = () => {
+      const saved = localStorage.getItem('ddl_generator_global_rules');
+      if (saved) {
+        try {
+          setGlobalRules(JSON.parse(saved));
+        } catch (e) {
+          console.error('Failed to load rules:', e);
+        }
       }
-    }
+    };
+
+    // 初始加载
+    loadRules();
+
+    // 监听 localStorage 变化（当规则管理器更新规则时触发）
+    const handleStorageChange = (e: StorageEvent) => {
+      // 监听规则管理器的变化
+      if (e.key === 'ddl_generator_global_rules' && e.newValue) {
+        try {
+          setGlobalRules(JSON.parse(e.newValue));
+          // 触发 DWD 重新生成
+          setRefreshDWD(prev => prev + 1);
+        } catch (err) {
+          console.error('Failed to update rules from storage:', err);
+        }
+      }
+
+      // 监听码转名维表配置的变化
+      if (e.key === 'codeToNameConfig') {
+        // 触发 INSERT 语句重新生成
+        setRefreshInsert(prev => prev + 1);
+      }
+    };
+
+    window.addEventListener('storage', handleStorageChange);
+
+    // 清理事件监听器
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
+
+  // 当规则变化时，重新生成 DWD SQL
+  useEffect(() => {
+    if (data && dwdTableName && refreshDWD > 0) {
+      // 稍微延迟以确保状态已更新
+      setTimeout(() => {
+        generateDWDSQL();
+      }, 100);
+    }
+  }, [refreshDWD, data, dwdTableName]);
+
+  // 当码转名配置变化时，重新生成 INSERT SQL
+  useEffect(() => {
+    if (data && refreshInsert > 0) {
+      // 稍微延迟以确保状态已更新
+      setTimeout(() => {
+        generateInsertSQL();
+      }, 100);
+    }
+  }, [refreshInsert, data]);
 
   // 根据字段名和注释推断字段类型（使用规则管理器的规则）
   const inferFieldType = (fieldName: string, fieldComment: string): string => {
