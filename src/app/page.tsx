@@ -227,9 +227,9 @@ export default function Home() {
   }, []);
 
   // 保存规则到 localStorage
-  const saveRules = () => {
+  const saveRules = (rulesToSave: GlobalRule[]) => {
     try {
-      localStorage.setItem('ddl_generator_global_rules', JSON.stringify(globalRules));
+      localStorage.setItem('ddl_generator_global_rules', JSON.stringify(rulesToSave));
       setSaveStatus('✓ 已保存');
       setTimeout(() => setSaveStatus(''), 2000);
     } catch (e) {
@@ -328,8 +328,9 @@ export default function Home() {
 
   const handleResetRules = () => {
     if (confirm('确定要重置所有规则为默认值吗？')) {
-      setGlobalRules(JSON.parse(JSON.stringify(DEFAULT_GLOBAL_RULES)));
-      saveRules();
+      const nextRules = JSON.parse(JSON.stringify(DEFAULT_GLOBAL_RULES)) as GlobalRule[];
+      setGlobalRules(nextRules);
+      saveRules(nextRules);
     }
   };
 
@@ -354,24 +355,27 @@ export default function Home() {
       typeParams: {},
       priority: 999
     };
-    setGlobalRules([...globalRules, newRule]);
-    saveRules();
+    const nextRules = [...globalRules, newRule];
+    setGlobalRules(nextRules);
+    saveRules(nextRules);
   };
 
   const deleteRule = (id: string) => {
-    setGlobalRules(globalRules.filter(r => r.id !== id));
-    saveRules();
+    const nextRules = globalRules.filter(r => r.id !== id);
+    setGlobalRules(nextRules);
+    saveRules(nextRules);
   };
 
   const updateRule = (id: string, updates: Partial<GlobalRule>) => {
-    setGlobalRules(globalRules.map(rule =>
+    const nextRules = globalRules.map(rule =>
       rule.id === id ? { ...rule, ...updates } : rule
-    ));
-    saveRules();
+    );
+    setGlobalRules(nextRules);
+    saveRules(nextRules);
   };
 
   const toggleAllDatabases = (ruleId: string, selectAll: boolean) => {
-    setGlobalRules(globalRules.map(rule => {
+    const nextRules = globalRules.map(rule => {
       if (rule.id !== ruleId) return rule;
 
       const allDatabases = Object.keys(DB_LABELS);
@@ -403,12 +407,13 @@ export default function Home() {
         ...rule,
         targetDatabases: newTargetDatabases
       };
-    }));
-    saveRules();
+    });
+    setGlobalRules(nextRules);
+    saveRules(nextRules);
   };
 
   const handleDatabaseChange = (ruleId: string, dbType: string, checked: boolean) => {
-    setGlobalRules(globalRules.map(rule => {
+    const nextRules = globalRules.map(rule => {
       if (rule.id !== ruleId) return rule;
 
       const newTargetDatabases = checked
@@ -451,20 +456,22 @@ export default function Home() {
         ...rule,
         targetDatabases: newTargetDatabases
       };
-    }));
-    saveRules();
+    });
+    setGlobalRules(nextRules);
+    saveRules(nextRules);
   };
 
   const updateTypeParam = (ruleId: string, dbType: string, paramUpdates: any) => {
-    setGlobalRules(globalRules.map(rule => {
+    const nextRules = globalRules.map(rule => {
       if (rule.id !== ruleId) return rule;
 
       const newTypeParams = { ...rule.typeParams };
       newTypeParams[dbType] = { ...newTypeParams[dbType], ...paramUpdates };
 
       return { ...rule, typeParams: newTypeParams };
-    }));
-    saveRules();
+    });
+    setGlobalRules(nextRules);
+    saveRules(nextRules);
   };
 
   const hasTypeParams = (dataType: string) => {
