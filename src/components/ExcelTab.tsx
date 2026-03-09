@@ -142,7 +142,7 @@ export default function ExcelTab() {
             return regex.test(matchField);
           });
         } catch (e) {
-          console.error('Invalid regex:', keyword);
+          console.error('Invalid regex rule:', keywords, e);
         }
       }
 
@@ -752,14 +752,16 @@ LIFECYCLE 10;`;
     const maxSourceLength = Math.max(...fields.map(f => f.source.length));
     const maxNameLength = Math.max(...fields.map(f => f.name.length));
     const maxDescLength = Math.max(...fields.map(f => f.desc.length));
+    const padRight = (value: string, minLength: number) =>
+      value + ' '.repeat(Math.max(0, minLength - value.length));
 
     // 生成SELECT语句
     const selectFields = fields.map((field, index) => {
       const isFirst = index === 0;
       const comma = isFirst ? ' ' : ',';
-      const sourcePadded = `${field.source}${' '.repeat(maxSourceLength - field.source.length)}`;
-      const namePadded = field.name + ' '.repeat(maxNameLength - field.name.length);
-      const descPadded = `'${field.desc}'${' '.repeat(maxDescLength - field.desc.length)}`;
+      const sourcePadded = padRight(field.source, maxSourceLength);
+      const namePadded = padRight(field.name, maxNameLength);
+      const descPadded = padRight(`'${field.desc}'`, maxDescLength);
       
       return `${comma}${sourcePadded}  AS  ${namePadded}   -- ${descPadded}`;
     }).join('\n');
@@ -803,9 +805,9 @@ LIFECYCLE 10;`;
           
           requireFieldList.forEach((reqField: string) => {
             const codeToNameSource = `${tableAlias}.${reqField}`;
-            const codeToNameSourcePadded = `${codeToNameSource}${' '.repeat(maxSourceLength - codeToNameSource.length)}`;
+            const codeToNameSourcePadded = padRight(codeToNameSource, maxSourceLength);
             const codeToNameDesc = `${field.desc}名称`;
-            const codeToNameDescPadded = `'${codeToNameDesc}'${' '.repeat(maxDescLength - codeToNameDesc.length)}`;
+            const codeToNameDescPadded = padRight(`'${codeToNameDesc}'`, maxDescLength);
             
             // 生成INSERT语句中的码转名字段
             codeToNameFields.push(
@@ -850,9 +852,9 @@ LIFECYCLE 10;`;
     });
 
     // 添加 etl_time 字段
-    const etlSourcePadded = `current_timestamp()${' '.repeat(maxSourceLength - 'current_timestamp()'.length)}`;
-    const etlNamePadded = `etl_time${' '.repeat(maxNameLength - 'etl_time'.length)}`;
-    const etlDescPadded = `'数据生成时间'${' '.repeat(maxDescLength - '数据生成时间'.length)}`;
+    const etlSourcePadded = padRight('current_timestamp()', maxSourceLength);
+    const etlNamePadded = padRight('etl_time', maxNameLength);
+    const etlDescPadded = padRight(`'数据生成时间'`, maxDescLength);
     const etlField = `,${etlSourcePadded}  AS  ${etlNamePadded}   -- ${etlDescPadded}`;
 
     const sql = 'INSERT OVERWRITE TABLE\t' + targetTableName + " PARTITION (pt ='${bdp.system.bizdate}')\n" +
